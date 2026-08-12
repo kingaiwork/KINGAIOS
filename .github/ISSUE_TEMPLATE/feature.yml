@@ -1,0 +1,28 @@
+name: Feature proposal
+description: Propose an improvement to KINGAI OS
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Intelligence, Agent Runtime, Security, Desktop, Server, IoT / Edge, Model Fabric, Memory, Installer, Update, Build / Release, Documentation, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security / privacy / compatibility considerations

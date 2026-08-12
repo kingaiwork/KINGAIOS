@@ -1,0 +1,11 @@
+# KINGAI OS ownership baseline
+* @kingaiwork
+
+# Trust, release and security-sensitive areas
+/security/ @kingaiwork
+/update/ @kingaiwork
+/boot/ @kingaiwork
+/installer/ @kingaiwork
+/.github/workflows/ @kingaiwork
+/.release/ @kingaiwork
+/legal/ @kingaiwork
