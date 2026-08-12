@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.23.x'
           cache: false
@@ -55,8 +55,9 @@ jobs:
       - name: Verify no build-host ownership leaked
         run: |
           root="dist/rootfs-${{ steps.params.outputs.profile }}-amd64"
-          leaked=$(sudo find "$root" -xdev -uid "$(id -u)" -print -quit)
-          test -z "$leaked" || { echo "build-host UID leaked into rootfs: $leaked"; exit 1; }
+          leaked=$(sudo find "$root" -xdev -mindepth 1 -uid "$(id -u)" -print -quit)
+          test -z "$leaked" || { echo "build-host UID leaked into rootfs content: $leaked"; exit 1; }
+          test "$(sudo stat -c '%u:%g' "$root")" = "0:0"
       - name: Build KINGAI Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh "${{ steps.params.outputs.profile }}" dist
       - name: Normalize artifact ownership

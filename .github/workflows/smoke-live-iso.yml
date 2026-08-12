@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.23.x'
           cache: false
@@ -32,8 +32,10 @@ jobs:
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
       - name: Verify no build-host ownership leaked
         run: |
-          leaked=$(sudo find dist/rootfs-server-amd64 -xdev -uid "$(id -u)" -print -quit)
-          test -z "$leaked" || { echo "build-host UID leaked into rootfs: $leaked"; exit 1; }
+          root=dist/rootfs-server-amd64
+          leaked=$(sudo find "$root" -xdev -mindepth 1 -uid "$(id -u)" -print -quit)
+          test -z "$leaked" || { echo "build-host UID leaked into rootfs content: $leaked"; exit 1; }
+          test "$(sudo stat -c '%u:%g' "$root")" = "0:0"
       - name: Build hybrid Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh server dist
       - name: Validate ISO filesystem and checksums
