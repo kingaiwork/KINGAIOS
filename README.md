@@ -2,121 +2,99 @@
 
 > **Sovereign Distributed Intelligence Operating System**
 >
-> AI-native. Agent-native. Local-first. Secure by default. Model-neutral. Cloud-neutral. Built for long-term global deployment.
+> AI-native · Agent-native · Local-first · Secure-by-default · Model-neutral · Cloud-neutral
 
-**Project status:** Developer Foundation / Pre-Alpha  
-**Primary site:** `https://os.kingai.work`  
-**Source:** `https://github.com/kingaiwork/KINGAIOS`  
-**Base generation:** Ubuntu 26.04 LTS source lineage + KINGAI-owned build, policy, intelligence, security, update and distribution layers.
+**Status:** D4 Developer Foundation / Pre-Alpha  
+**Official site:** `https://os.kingai.work`  
+**Repository:** `https://github.com/kingaiwork/KINGAIOS`
 
 ---
 
-## English
+# English
 
-### Vision
+## The AI-native operating system for the next generation of intelligent computing
 
-KINGAI OS is a long-term operating-system project from KINGAI. It is designed as an AI-native Linux platform where intelligence, memory, agents, policy, security, execution, model routing, updates and device management are first-class operating-system capabilities rather than loosely connected applications.
+KINGAI OS is a long-term operating-system project from KINGAI, designed to deeply integrate intelligence, memory, agents, policy, security, execution, model routing, updates and device management into one coherent Linux platform.
 
-The project integrates advanced open technologies from the global Linux, cloud-native, AI, security and software-supply-chain ecosystems while keeping the KINGAI architecture independent from any single model provider, cloud vendor, agent framework or execution engine.
+It brings together advanced technologies from the global Linux, AI, cloud-native, cybersecurity and software-supply-chain ecosystems while preserving a sovereign KINGAI architecture that is not locked to any single model provider, cloud vendor, agent framework or execution engine.
 
-KINGAI OS is designed around a simple rule:
+> **Intelligence may be autonomous. Authority remains controlled, auditable and revocable.**
 
-> **Intelligence may be autonomous, but authority must remain controlled, auditable and revocable.**
+## Editions
 
-### Product editions
+### KINGAI OS Server
 
-KINGAI OS uses one shared core and three official distribution profiles:
+Headless edition for VPS, servers, AI nodes, enterprise automation and distributed agent infrastructure.
 
-- **KINGAI OS Server** — headless server, VPS, AI node and enterprise agent runtime.
-- **KINGAI OS Desktop** — desktop edition with a first-run visual choice between KINGAI Intelligence, KINGAI Flow and KINGAI Classic experiences. The desktop experience can be changed later without reinstalling the OS.
-- **KINGAI OS IoT / Edge** — minimal image for ARM64/x86-64 edge devices, robotics, gateways and embedded AI systems.
+### KINGAI OS Desktop
 
-### Desktop experiences
+One optimized Desktop ISO with a first-run visual experience selector:
 
-The Desktop edition ships one shared desktop core with multiple visual/interaction profiles:
+- **KINGAI Intelligence** — KINGAI's AI-first desktop centered on agents, memory, tasks, projects, knowledge and automation.
+- **KINGAI Flow** — a clean modern spatial workflow with dock-oriented interaction.
+- **KINGAI Classic** — a familiar taskbar and application-menu workflow for traditional PC users.
 
-- **KINGAI Intelligence** — the native AI-first workspace centered on agents, memory, tasks, knowledge, projects and automation.
-- **KINGAI Flow** — a clean, dock-oriented workflow designed for users who prefer a modern spatial desktop model.
-- **KINGAI Classic** — a taskbar/application-menu workflow designed for users who prefer a traditional PC desktop model.
+Desktop experiences share one common Desktop Core and can be changed later without reinstalling the operating system.
 
-These are KINGAI product experiences. Third-party trademarks, icons and proprietary visual assets are not used as KINGAI branding.
+### KINGAI OS IoT / Edge
 
-### Core architecture
+Minimal edition for ARM64/x86-64 edge systems, robotics, gateways, embedded AI and intelligent devices.
+
+## D4 Architecture
 
 ```text
 User / Organization
-        |
-        v
+        │
+        ▼
 KINGAI Intelligence
-        |
-        +-- Brain / Planner
-        +-- Memory Fabric
-        +-- Agent Manager
-        +-- Model Fabric
-        +-- Knowledge
-        +-- Controlled Evolution
-        |
-        v
+Brain · Planner · Memory · Knowledge · Evolution
+        │
+        ▼
 KINGAI Governance
-        |
-        +-- Policy Engine
-        +-- Capability Broker
-        +-- Risk Engine
-        +-- Identity / Secrets
-        +-- Audit / Compliance
-        |
-        v
+Policy · Capability · Risk · Identity · Audit
+        │
+        ▼
 Execution Fabric
-        |
-        +-- Native Runtime
-        +-- OpenClaw Adapter
-        +-- MCP Adapter
-        +-- Codex Adapter
-        +-- Browser Adapter
-        +-- Rootless Containers
-        +-- Isolated VM / MicroVM backends
-        |
-        v
-KINGAI Secure System Core
-        |
-        +-- systemd / cgroup v2
-        +-- AppArmor / seccomp / Landlock
-        +-- Secure Boot / TPM integration
-        +-- signed updates / rollback
-        |
-        v
+Native · OpenClaw · MCP · Codex · Browser · Containers · VM
+        │
+        ▼
+KINGAI Secure Core
+systemd · cgroup v2 · AppArmor · seccomp · Landlock
+        │
+        ▼
 Linux Kernel
 ```
 
-### Architectural principles
+## Core principles
 
-1. **Local-first:** core functions continue to operate without the cloud.
-2. **Model-neutral:** local and remote models are connected through a provider-neutral model fabric.
-3. **Cloud-neutral:** Cloudflare may be used as the first control-plane implementation, but the OS must not depend on it for survival.
-4. **Agent-native:** agents are managed through policy and capabilities, not unrestricted root shells.
-5. **Least privilege:** an agent cannot grant itself higher authority.
-6. **Immutable-core direction:** production images are designed for verifiable, rollback-friendly system updates.
-7. **Privacy by default:** sensitive memory can remain local and cloud synchronization is explicit and policy-controlled.
-8. **Supply-chain security:** releases are designed to carry checksums, signatures, SBOM and build provenance.
-9. **Controlled evolution:** autonomous improvement must pass sandboxing, testing, policy evaluation and deployment gates.
-10. **Replaceable dependencies:** OpenClaw, model vendors, cloud providers and execution engines are adapters, not the identity of KINGAI OS.
+- **Local-first** — core intelligence can continue operating without cloud connectivity.
+- **Agent-native** — agents are first-class system actors governed by explicit capabilities and policy.
+- **Model-neutral** — local and cloud models are interchangeable through KINGAI Model Fabric.
+- **Cloud-neutral** — cloud infrastructure enhances the system but is not required for local survival.
+- **Least privilege** — AI agents never receive unrestricted authority by default.
+- **Controlled evolution** — autonomous improvements pass sandboxing, tests, policy and deployment gates.
+- **Secure updates** — official releases are designed for signatures, SBOM, provenance, integrity verification and rollback.
+- **Privacy-first memory** — sensitive memory can remain local with explicit synchronization policy.
+- **Replaceable execution engines** — OpenClaw, MCP, Codex, browsers and other runtimes remain adapters rather than the identity of KINGAI OS.
 
-### AI model strategy
+## KINGAI Intelligence Layer
 
-Large third-party model weights are intentionally not embedded in the default ISO unless redistribution rights are explicitly verified.
+```text
+KINGAI Brain
+├── Planner
+├── Memory Fabric
+├── Agent Manager
+├── Model Fabric
+├── Knowledge
+├── Task Graph
+└── Controlled Evolution
+```
 
-The OS ships the model-management and routing layer. Models may be configured after installation as:
+The goal is not to place an AI chatbot on top of Linux. The goal is to make intelligence a governed operating-system capability.
 
-- Local
-- Cloud
-- Hybrid
-- Offline fallback
+## Agent security
 
-Routing policies can consider privacy, cost, latency, capability, availability, context length, jurisdiction and license status.
-
-### Security model
-
-KINGAI OS uses capability-oriented execution. Instead of giving an AI agent unrestricted `sudo`, privileged actions pass through policy-controlled capabilities such as:
+Agents operate through capabilities instead of unrestricted root shells.
 
 ```text
 filesystem.read
@@ -130,31 +108,27 @@ boot.modify
 disk.raw
 ```
 
-Risk levels are designed from read-only operations through owner-only trust-root operations. High-impact authority remains explicit and auditable.
+High-impact actions are evaluated through KINGAI Policy and Capability Broker before privileged execution.
 
-### Distribution and large files
+## Model Fabric
 
-Source code, build definitions, documentation and release metadata live in GitHub.
+KINGAI OS is designed to support local, cloud, hybrid and offline-fallback models without binding the system to one vendor.
 
-GitHub Release assets are limited per file, so large operating-system images are published through KINGAI-controlled object storage. The initial large-object backend is Cloudflare R2 using its S3-compatible multipart API.
+Routing can consider:
 
-Planned public paths:
+- capability
+- privacy
+- latency
+- cost
+- availability
+- context length
+- region
+- trust
+- license status
 
-```text
-https://os.kingai.work/download
-https://os.kingai.work/updates
-https://os.kingai.work/repo
-https://os.kingai.work/security
-https://os.kingai.work/docs
-```
+Large third-party model weights are not embedded in the default ISO unless redistribution rights are explicitly verified.
 
-Artifact policy:
-
-- `<= 2 GiB`: eligible for GitHub Releases when appropriate.
-- `> 2 GiB`: publish to the KINGAI R2 release bucket and expose through `os.kingai.work`.
-- checksums, signatures, SBOM and provenance accompany official images.
-
-### Target image families
+## Distribution targets
 
 ```text
 KINGAI-OS-Server-<version>-amd64.iso
@@ -163,236 +137,238 @@ KINGAI-OS-Desktop-<version>-amd64.iso
 KINGAI-OS-IoT-<version>-arm64.img.xz
 ```
 
-Initial engineering size goals:
+Engineering size targets:
 
-- Server: approximately 1.2–1.6 GB
-- Desktop: approximately 2.8–3.5 GB
-- IoT/Edge compressed image: approximately 0.4–0.7 GB
+- Server: **~1.2–1.6 GB**
+- Desktop: **~2.8–3.5 GB**
+- IoT / Edge compressed image: **~0.4–0.7 GB**
 
-These are engineering targets, not release guarantees. CI will record actual image sizes.
+Actual release sizes are measured by the build pipeline.
 
-### Repository layout
+## Downloads and large artifacts
 
-```text
-base/           upstream source manifests and package policy
-boot/           verified boot, Secure Boot, TPM and integrity work
-core/           KINGAI system daemons and shared core
-intelligence/   brain, planner, memory, knowledge and evolution
-agents/         agent runtime, permissions and registry
-models/         provider-neutral model fabric
-runtime/        process, container and isolated execution backends
-adapters/       OpenClaw, MCP, Codex, browser and provider adapters
-security/       policy, sandbox, audit and hardening
-profiles/       Server, Desktop and IoT/Edge build profiles
-desktop/        shared desktop core and experience profiles
-distro/         rootfs, installer and image generation
-update/         signing, TUF metadata and rollback framework
-cloud/          optional control-plane interfaces
-scripts/        build, validation and publishing helpers
-docs/           architecture, security, legal and roadmap documents
-legal/          license manifests, notices and compliance metadata
-.github/        CI/CD and release automation
-```
-
-### Release channels
+GitHub is the source-code and release-metadata home.
 
 ```text
-nightly -> dev -> beta -> rc -> stable
+<= 2 GiB  → GitHub Releases when appropriate
+>  2 GiB  → KINGAI object storage / Cloudflare R2
 ```
 
-A stable release must pass build, security, license, upgrade, rollback, clean-install and recovery gates before signing.
+Public distribution is unified through:
 
-### Legal and compliance direction
+```text
+https://os.kingai.work/download
+https://os.kingai.work/updates
+https://os.kingai.work/repo
+```
 
-KINGAI OS is a KINGAI distribution and technology platform, but upstream software remains under its respective copyright and license terms.
+Official images are designed to ship with checksums, signatures, SBOM and build provenance.
 
-The project is designed to maintain:
+## Repository
 
-- upstream source and patch traceability;
-- license and copyright inventories;
-- corresponding-source workflows where required;
-- third-party model redistribution checks;
-- software bill of materials (SBOM);
-- vulnerability and security-advisory processes;
-- privacy/export/delete controls;
-- AI transparency and audit metadata;
-- release signing and provenance.
+```text
+base/           Source manifests and base-system policy
+boot/           Boot trust and integrity
+core/           KINGAI system core
+intelligence/   Brain, memory, knowledge and evolution
+agents/         Agent runtime and permissions
+models/         Model Fabric
+runtime/        Execution backends
+adapters/       OpenClaw, MCP, Codex, browser and providers
+security/       Policy, sandboxing and audit
+profiles/       Server / Desktop / IoT profiles
+desktop/        KINGAI Desktop Core and experiences
+distro/         RootFS, installer and image generation
+update/         Signed updates and rollback
+cloud/          Optional distributed control-plane interfaces
+scripts/        Build and publishing tools
+docs/           Architecture and roadmap
+legal/          Compliance metadata
+.github/        CI/CD
+```
 
-Formal global commercial release will require jurisdiction-specific legal review. Engineering controls in this repository are intended to make that review repeatable and auditable.
+## Release channels
 
-### Current milestone
+```text
+nightly → dev → beta → rc → stable
+```
 
-The repository is currently establishing the **D4 Developer Foundation**:
+Stable releases must pass build, security, install, upgrade, rollback and recovery gates before signing.
 
-- repository and documentation baseline;
-- distribution profiles;
-- reproducible image-build skeleton;
-- R2-aware artifact publishing;
-- security and policy architecture;
-- desktop-experience framework;
-- legal/compliance gates;
-- CI release pipeline.
+## Current milestone
 
-The presence of build scaffolding does **not** mean a production-ready KINGAI OS ISO has already been released.
+**KINGAI OS 0.1 Developer Foundation** is establishing:
+
+- shared Server / Desktop / IoT build profiles;
+- KINGAI CLI and core runtime foundation;
+- agent capability and policy architecture;
+- model-neutral and local-first interfaces;
+- secure release pipeline;
+- optimized image generation;
+- large-artifact R2 publishing;
+- KINGAI Desktop Experience framework.
+
+This repository is under active development and does not yet represent a production-ready Stable ISO.
 
 ---
 
 # 中文
 
-## 项目愿景
+## 面向下一代智能计算的 AI 原生操作系统
 
-KINGAI OS 是 KINGAI 面向未来长期发展的 AI 原生操作系统项目。它不是“Ubuntu 安装几个 AI 软件”，而是把智能、记忆、智能体、权限治理、模型路由、安全、执行、更新和设备管理设计为操作系统的一等能力。
+KINGAI OS 是 KINGAI 面向未来长期发展的 AI 原生操作系统项目，将智能、记忆、智能体、权限治理、安全、执行、模型路由、系统更新与设备管理深度整合为统一 Linux 平台。
 
-项目将持续整合全球 Linux、AI、云原生、安全、软件供应链等领域成熟且先进的开放技术，同时保证 KINGAI 的核心架构不被任何单一模型厂商、云服务商、智能体框架或执行引擎绑定。
+项目持续整合全球 Linux、人工智能、云原生、网络安全和软件供应链领域成熟先进的开放技术，同时保持 KINGAI 自主架构，不被任何单一模型厂商、云平台、智能体框架或执行引擎绑定。
 
-KINGAI OS 的核心原则：
-
-> **智能可以自主，但权限必须始终可控、可审计、可撤销。**
+> **智能可以自主，权限必须始终可控、可审计、可撤销。**
 
 ## 三个正式版本
 
-KINGAI OS 使用同一套核心代码，建立三个官方发行 Profile：
+### KINGAI OS Server
 
-- **KINGAI OS Server**：无桌面服务器、VPS、AI 节点、企业智能体运行环境。
-- **KINGAI OS Desktop**：桌面版本。首次进入系统通过可视化展示选择 KINGAI Intelligence、KINGAI Flow 或 KINGAI Classic，进入系统后仍可随时切换，不需要重装。
-- **KINGAI OS IoT / Edge**：面向 ARM64/x86-64 IoT、机器人、边缘网关和嵌入式 AI 设备的精简版本。
+无桌面版本，面向 VPS、服务器、AI 节点、企业自动化和分布式智能体基础设施。
 
-## KINGAI 原生桌面
+### KINGAI OS Desktop
 
-Desktop 只维护一套 Desktop Core，并提供三种 KINGAI 自有桌面体验：
+只维护一个优化后的 Desktop ISO。第一次进入系统时提供可视化桌面体验展示，由用户选择：
 
-- **KINGAI Intelligence**：以 AI、智能体、记忆、任务、知识、项目和自动化为核心的 KINGAI 原生 AI 桌面。
-- **KINGAI Flow**：现代化 Dock/空间工作流体验。
-- **KINGAI Classic**：传统任务栏、应用菜单和 PC 工作流体验。
+- **KINGAI Intelligence** — KINGAI 原生 AI 桌面，以智能体、记忆、任务、项目、知识和自动化为核心。
+- **KINGAI Flow** — 现代化空间工作流和 Dock 风格交互。
+- **KINGAI Classic** — 面向传统 PC 用户的任务栏与应用菜单工作流。
 
-三种模式共享底层组件，不安装三套完整桌面环境，从而降低 ISO 大小、内存占用和长期维护成本。
+三个体验共享同一套 KINGAI Desktop Core，进入系统后仍可自由切换，无需重新安装系统。
 
-## 智能体与执行层
+### KINGAI OS IoT / Edge
 
-OpenClaw、Codex、MCP、浏览器控制和其他执行引擎均作为 Adapter 接入 KINGAI，而不是 KINGAI OS 的根依赖。
+面向 ARM64/x86-64 IoT、机器人、边缘网关、嵌入式 AI 和智能终端的精简版本。
 
-真正长期保持不变的是：
+## D4 核心架构
 
 ```text
+用户 / 企业
+    │
+    ▼
 KINGAI Intelligence
-KINGAI Memory
+Brain · Planner · Memory · Knowledge · Evolution
+    │
+    ▼
 KINGAI Governance
-KINGAI Agent Runtime
-KINGAI Security
-KINGAI Trust / Update Chain
-KINGAI Desktop Experience
+Policy · Capability · Risk · Identity · Audit
+    │
+    ▼
+Execution Fabric
+Native · OpenClaw · MCP · Codex · Browser · Containers · VM
+    │
+    ▼
+KINGAI Secure Core
+systemd · cgroup v2 · AppArmor · seccomp · Landlock
+    │
+    ▼
+Linux Kernel
 ```
 
-因此未来即使替换模型、OpenClaw、Cloudflare 或其他供应商，KINGAI OS 仍然可以继续演进。
+## 核心原则
 
-## 安全设计
+- **Local-first**：即使云端不可用，核心智能仍可在本机运行。
+- **Agent-native**：智能体成为操作系统原生能力，并受 Policy 与 Capability 管理。
+- **Model-neutral**：本地模型与云模型通过 KINGAI Model Fabric 自由替换。
+- **Cloud-neutral**：云端用于增强，而不是系统生存依赖。
+- **Least privilege**：AI 默认不拥有无限 root 权限。
+- **Controlled evolution**：自主升级必须经过沙箱、测试、策略和发布门禁。
+- **Secure updates**：正式发行支持签名、SBOM、Provenance、完整性检查与回滚。
+- **Privacy-first memory**：敏感记忆默认可以只保存在本地。
+- **执行引擎可替换**：OpenClaw、MCP、Codex、Browser 等只是 Adapter。
 
-KINGAI OS 不把 AI 直接等同于 root。智能体通过 Capability Broker 申请受策略控制的能力，关键操作经过风险分级、审计和必要的人工批准。
-
-正式稳定版方向包括：
-
-- systemd + cgroup v2
-- AppArmor
-- seccomp
-- Landlock
-- rootless containers
-- Secure Boot / TPM
-- 可验证系统镜像
-- 签名更新
-- A/B 更新与自动回滚
-- 软件供应链 SBOM / provenance
-
-## 模型策略
-
-默认 ISO 不直接打包没有明确再发行授权的大型第三方模型权重。
-
-系统内置 Model Manager、Model Router 和 Provider Adapter；安装后用户可以选择：
-
-- 云模型
-- 本地模型
-- 混合模式
-- 离线备用
-
-路由策略可根据隐私、成本、速度、能力、上下文、可用性、地区和许可证条件动态选择模型。
-
-## ISO 与大文件发布
-
-GitHub 保存：
-
-- 源码
-- 构建脚本
-- 文档
-- Release Notes
-- 小型发布资产
-- 校验与元数据
-
-超过 GitHub 单个 Release Asset 限制的大型 ISO/IMG 使用 KINGAI 管理的对象存储发布。第一阶段采用 Cloudflare R2 S3 兼容 Multipart Upload。
-
-规则：
+## KINGAI Intelligence Layer
 
 ```text
-<= 2 GiB  -> 可按需要发布到 GitHub Releases
->  2 GiB  -> 发布到 KINGAI R2，并通过 os.kingai.work 提供下载
+KINGAI Brain
+├── Planner
+├── Memory Fabric
+├── Agent Manager
+├── Model Fabric
+├── Knowledge
+├── Task Graph
+└── Controlled Evolution
 ```
 
-用户统一访问：
+KINGAI OS 的目标不是在 Linux 上增加一个聊天机器人，而是把受治理的智能能力真正提升为操作系统的一等能力。
+
+## Agent 安全
+
+智能体通过 Capability 使用系统权限，而不是直接获得不受限制的 root shell。
+
+高风险操作必须经过 KINGAI Policy、风险判断、Capability Broker 和受控执行器。
+
+## 模型体系
+
+KINGAI OS 支持本地、云端、混合和离线备用模型，并保持 Provider-neutral。
+
+模型路由可根据能力、隐私、速度、成本、可用性、上下文、地区、可信等级和许可证动态选择。
+
+没有明确再发行权限的大型第三方模型权重默认不打包进官方 ISO。
+
+## 镜像目标
 
 ```text
-os.kingai.work/download
-os.kingai.work/updates
-os.kingai.work/repo
+KINGAI-OS-Server-<version>-amd64.iso
+KINGAI-OS-Server-<version>-arm64.iso
+KINGAI-OS-Desktop-<version>-amd64.iso
+KINGAI-OS-IoT-<version>-arm64.img.xz
 ```
 
-## 初始体积目标
+工程体积目标：
 
-- Server：约 1.2–1.6 GB
-- Desktop：约 2.8–3.5 GB
-- IoT/Edge 压缩镜像：约 0.4–0.7 GB
+- Server：**约 1.2–1.6 GB**
+- Desktop：**约 2.8–3.5 GB**
+- IoT / Edge 压缩镜像：**约 0.4–0.7 GB**
 
-这些是工程目标，不是未经构建验证的宣传数字。CI 会记录每次实际构建体积。
+最终以自动构建后的实际体积为准。
 
-## 法律与全球发行
+## ISO 与大型文件
 
-KINGAI OS 是 KINGAI 自己的发行版和技术平台，但 Linux 内核以及第三方软件仍然分别遵守其原始版权和许可证。
+GitHub 主要保存源码、构建系统、文档和版本元数据。
 
-项目将把法律与合规直接纳入构建和发布流程，包括：
+```text
+<= 2 GiB  → 按需要使用 GitHub Releases
+>  2 GiB  → KINGAI 对象存储 / Cloudflare R2
+```
 
-- 上游源码与补丁可追溯；
-- 自动许可证清单；
-- 必要的对应源码提供机制；
-- 第三方模型再发行权限检查；
-- SBOM；
-- 安全漏洞与公告机制；
-- 隐私数据导出/删除能力；
-- AI 透明度与审计元数据；
-- Release 签名和构建 provenance。
+用户统一通过：
 
-全球正式商业发行前仍需按照实际发行国家、功能和商业模式完成专业法律审查。
+```text
+https://os.kingai.work/download
+https://os.kingai.work/updates
+https://os.kingai.work/repo
+```
+
+获取正式镜像和更新。
 
 ## 当前阶段
 
-当前仓库正在建立 **KINGAI OS D4 Developer Foundation**，重点是把长期架构、构建、发行、安全、法律和智能体边界一次设计正确。
+**KINGAI OS 0.1 Developer Foundation** 正在建立：
 
-当前阶段不对外宣称已经存在生产级稳定 ISO；完成可重复构建、测试、签名、升级和回滚验证后，再进入 Alpha / Beta / RC / Stable。
+- Server / Desktop / IoT 统一构建 Profile；
+- KINGAI CLI 与核心 Runtime；
+- Agent Capability / Policy 架构；
+- 模型中立与 Local-first 接口；
+- 安全发布体系；
+- 精简镜像构建；
+- R2 大文件发布；
+- KINGAI Desktop Experience 框架。
 
----
-
-## Roadmap
-
-See `docs/ROADMAP.md`.
-
-## Architecture
-
-See `docs/ARCHITECTURE.md`.
-
-## Security
-
-See `SECURITY.md`.
-
-## Legal / Compliance
-
-See `docs/LEGAL.md`.
+当前仍属于开发基础阶段，尚未宣称存在生产级 Stable ISO。
 
 ---
 
-**KINGAI OS** — Intelligence that can act, under authority that remains controlled.
+## Documentation
+
+- `docs/ARCHITECTURE.md`
+- `docs/ROADMAP.md`
+- `SECURITY.md`
+
+---
+
+**KINGAI OS — Intelligence that can act, under authority that remains controlled.**
+
+> **Base notice / 底层说明：** KINGAI OS is independently developed on the Ubuntu 26.04 LTS technology base and is distributed in accordance with applicable open-source licenses and trademark rules. / KINGAI OS 基于 Ubuntu 26.04 LTS 技术底座进行独立二次开发与发行，并遵守适用的开源许可证与商标规则。
