@@ -6,7 +6,7 @@ Before=multi-user.target
 
 [Service]
 Type=simple
-User=kingai
+User=_kingai
 Group=kingai
 ExecStart=/usr/lib/kingai/kingaid
 Restart=on-failure

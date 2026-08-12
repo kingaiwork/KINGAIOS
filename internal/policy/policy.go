@@ -29,12 +29,15 @@ type Policy struct {
 	Rules map[string]Rule `json:"rules"`
 }
 
+// Request contains the public policy request plus daemon-populated trust context.
+// Owner and Approved are intentionally excluded from JSON so an untrusted client
+// cannot self-assert authorization.
 type Request struct {
 	Agent      string `json:"agent"`
 	Capability string `json:"capability"`
 	Target     string `json:"target,omitempty"`
-	Owner      bool   `json:"owner,omitempty"`
-	Approved   bool   `json:"approved,omitempty"`
+	Owner      bool   `json:"-"`
+	Approved   bool   `json:"-"`
 }
 
 type Result struct {
@@ -83,12 +86,10 @@ func (p Policy) Evaluate(r Request) Result {
 	if r.Capability == "" {
 		return Result{Reason: "capability is required"}
 	}
-
 	rule, ok := p.Rules[r.Capability]
 	if !ok {
 		return Result{Reason: "unknown capability: default deny"}
 	}
-
 	res := Result{Risk: rule.Risk}
 	if rule.OwnerOnly && !r.Owner {
 		res.ApprovalRequired = true
@@ -100,7 +101,6 @@ func (p Policy) Evaluate(r Request) Result {
 		res.Reason = "explicit approval required"
 		return res
 	}
-
 	res.Allowed = true
 	res.Reason = "allowed by policy"
 	return res

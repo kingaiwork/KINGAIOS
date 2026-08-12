@@ -23,6 +23,7 @@ jobs:
           mkdir -p dist
           go build -trimpath -o dist/kingai ./cmd/kingai
           go build -trimpath -o dist/kingaid ./cmd/kingaid
+          go build -trimpath -o dist/kingai-update ./cmd/kingai-update
       - name: Unit tests
         run: go test ./...
       - name: Vet core
@@ -42,6 +43,7 @@ jobs:
           test -f systemd/kingaid.service
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
+          test -f update/README.md
           test -f profiles/server.yaml
           test -f profiles/desktop.yaml
           test -f profiles/iot.yaml

@@ -38,9 +38,11 @@ mmdebstrap --variant=minbase --architectures="$ARCH" \
 
 CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "$OUT/kingai-$ARCH" ./cmd/kingai
 CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "$OUT/kingaid-$ARCH" ./cmd/kingaid
+CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "$OUT/kingai-update-$ARCH" ./cmd/kingai-update
 
 install -Dm755 "$OUT/kingai-$ARCH" "$ROOT/usr/bin/kingai"
 install -Dm755 "$OUT/kingaid-$ARCH" "$ROOT/usr/lib/kingai/kingaid"
+install -Dm755 "$OUT/kingai-update-$ARCH" "$ROOT/usr/lib/kingai/kingai-update"
 install -Dm644 systemd/kingaid.service "$ROOT/usr/lib/systemd/system/kingaid.service"
 install -Dm644 sysusers/kingai.conf "$ROOT/usr/lib/sysusers.d/kingai.conf"
 install -Dm644 configs/policy.json "$ROOT/etc/kingai/policy.json"
@@ -52,7 +54,6 @@ cp -a distro/overlay/. "$ROOT/"
 rm -f "$ROOT/etc/os-release" "$ROOT/usr/lib/os-release"
 install -Dm644 distro/overlay/etc/os-release "$ROOT/usr/lib/os-release"
 ln -s ../usr/lib/os-release "$ROOT/etc/os-release"
-
 mkdir -p "$ROOT/etc/systemd/system/multi-user.target.wants"
 ln -sfn /usr/lib/systemd/system/kingaid.service "$ROOT/etc/systemd/system/multi-user.target.wants/kingaid.service"
 
@@ -60,12 +61,15 @@ if [[ "$PROFILE" == "desktop" ]]; then
   mkdir -p "$ROOT/usr/share/kingai"
   cp -a desktop "$ROOT/usr/share/kingai/"
 fi
-
 if [[ "$PROFILE" != "iot" ]]; then
   test -n "$(find "$ROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -print -quit)" || { echo "kernel missing from rootfs" >&2; exit 1; }
   test -n "$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -print -quit)" || { echo "initramfs missing from rootfs" >&2; exit 1; }
 fi
 
+if [[ "${KINGAI_SKIP_ARCHIVE:-0}" == "1" ]]; then
+  echo "Built rootfs directory: $ROOT"
+  exit 0
+fi
 ARTIFACT="$OUT/KINGAI-OS-${PROFILE}-${ARCH}-rootfs.tar.zst"
 tar --numeric-owner --xattrs --acls -C "$ROOT" -I 'zstd -19 -T0' -cf "$ARTIFACT" .
 sha256sum "$ARTIFACT" > "$ARTIFACT.sha256"

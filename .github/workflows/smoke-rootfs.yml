@@ -1,0 +1,42 @@
+name: KINGAI OS Server RootFS Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'configs/**'
+      - 'systemd/**'
+      - 'sysusers/**'
+      - 'distro/packages/server.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - '.github/workflows/smoke-rootfs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install rootfs tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd
+      - name: Build Ubuntu 26.04 based KINGAI Server RootFS
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Validate KINGAI identity and binaries
+        run: |
+          sudo chroot dist/rootfs-server-amd64 /usr/bin/kingai version
+          sudo test -x dist/rootfs-server-amd64/usr/lib/kingai/kingaid
+          sudo test -x dist/rootfs-server-amd64/usr/lib/kingai/kingai-update
+          grep -q '^NAME="KINGAI OS"' dist/rootfs-server-amd64/usr/lib/os-release
+          test -L dist/rootfs-server-amd64/etc/systemd/system/multi-user.target.wants/kingaid.service
