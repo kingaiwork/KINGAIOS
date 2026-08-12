@@ -1,0 +1,6 @@
+{
+  "profile": "server",
+  "channel": "dev",
+  "requested_at": "2026-08-12",
+  "reason": "First clean, QEMU-boot-verified KINGAI OS Server Developer Preview"
+}
