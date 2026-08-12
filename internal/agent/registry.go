@@ -61,3 +61,5 @@ func (r Registry) Has(agentID string) bool {
 	_, ok := r.agents[agentID]
 	return ok
 }
+
+func (r Registry) Count() int { return len(r.agents) }

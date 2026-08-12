@@ -1,0 +1,15 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPlugin": {
+    "Id": "org.kingai.agentcenter",
+    "Name": "KINGAI Agent Center",
+    "Description": "Local-first KINGAI intelligence and agent status",
+    "Version": "0.1.0",
+    "License": "Apache-2.0",
+    "Website": "https://os.kingai.work",
+    "Category": "System Information",
+    "Icon": "applications-system-symbolic",
+    "Authors": [{"Name": "KINGAI"}]
+  }
+}

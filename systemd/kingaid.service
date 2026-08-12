@@ -12,6 +12,7 @@ ExecStart=/usr/lib/kingai/kingaid
 Restart=on-failure
 RestartSec=3s
 RuntimeDirectory=kingai
+RuntimeDirectoryMode=0755
 StateDirectory=kingai
 LogsDirectory=kingai
 UMask=0077

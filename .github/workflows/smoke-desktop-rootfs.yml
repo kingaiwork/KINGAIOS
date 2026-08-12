@@ -6,6 +6,8 @@ on:
     paths:
       - 'desktop/**'
       - 'internal/desktop/**'
+      - 'internal/statuspub/**'
+      - 'cmd/kingaid/**'
       - 'configs/**'
       - 'systemd/**'
       - 'sysusers/**'
@@ -34,7 +36,7 @@ jobs:
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd
       - name: Build Ubuntu 26.04 based KINGAI Desktop RootFS
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
-      - name: Validate Desktop Core
+      - name: Validate Desktop Core and Agent Center
         run: |
           root=dist/rootfs-desktop-amd64
           sudo chroot "$root" /usr/bin/kingai desktop list
@@ -44,6 +46,8 @@ jobs:
           sudo test -f "$root/etc/xdg/autostart/kingai-welcome.desktop"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
           sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
+          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
+          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml"
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
           leaked=$(sudo find "$root/etc/kingai" "$root/usr/lib/kingai" "$root/usr/share/kingai" -uid "$(id -u)" -print -quit)
           test -z "$leaked" || { echo "build-host ownership leaked into KINGAI desktop files: $leaked"; exit 1; }
@@ -52,8 +56,11 @@ jobs:
           from pathlib import Path
           root=Path('dist/rootfs-desktop-amd64/usr/share/plasma/look-and-feel')
           for name in ('org.kingai.intelligence','org.kingai.flow','org.kingai.classic'):
-              p=root/name/'manifest.json'
-              data=json.loads(p.read_text())
+              data=json.loads((root/name/'manifest.json').read_text())
               assert data['KPackageStructure']=='Plasma/LookAndFeel'
               assert data['X-Plasma-API-Minimum-Version']=='6.0'
+          p=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json')
+          data=json.loads(p.read_text())
+          assert data['KPackageStructure']=='Plasma/Applet'
+          assert data['X-Plasma-API-Minimum-Version']=='6.0'
           PY
