@@ -1,0 +1,85 @@
+name: KINGAI OS Desktop Live ISO Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'internal/desktop/**'
+      - 'internal/statuspub/**'
+      - 'cmd/kingaid/**'
+      - 'distro/packages/desktop.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-live-iso.sh'
+      - '.github/workflows/smoke-desktop-iso.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boot-desktop-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install image and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
+      - name: Build Desktop root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
+      - name: Validate Desktop image contents
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo test -x "$root/usr/lib/kingai/kingai-welcome"
+          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
+          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
+          sudo chroot "$root" dpkg-query -W plasma-desktop plasma-workspace kwin-wayland sddm
+          test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+      - name: Build Desktop hybrid Live ISO
+        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh desktop dist
+      - name: Validate ISO and manifest
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          test -s "$iso"
+          sha256sum -c "$iso.sha256"
+          python3 - "$iso.manifest.json" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1]))
+          assert d['product']=='KINGAI OS'
+          assert d['profile']=='desktop'
+          assert d['installable'] is False
+          PY
+      - name: QEMU Desktop boot smoke
+        shell: bash
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          set +e
+          timeout 210 qemu-system-x86_64 -machine q35 -m 4096 -smp 4 -vga virtio \
+            -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-desktop.log 2>&1
+          code=$?
+          set -e
+          cat qemu-desktop.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Eiq 'Linux version|casper|systemd|sddm|graphical.target' qemu-desktop.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop.log
+          if grep -Eiq "Failed to start casper-md5check|can't execute '/usr/sbin/install-keymap'|update-notifier/.+No such file|var/crash/crash.init.+No such file" qemu-desktop.log; then
+            echo 'Desktop live-session compatibility regression detected.' >&2
+            exit 1
+          fi
+      - name: Report Desktop ISO routing
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          bytes=$(stat -c '%s' "$iso")
+          echo "Desktop ISO bytes: $bytes"
+          if (( bytes >= 2147483648 )); then
+            echo 'Release routing: R2 required'
+          else
+            echo 'Release routing: GitHub eligible'
+          fi
