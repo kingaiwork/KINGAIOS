@@ -1,0 +1,57 @@
+name: KINGAI OS Server Live ISO Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build-live-iso.sh'
+      - 'scripts/build-rootfs.sh'
+      - 'distro/packages/server.txt'
+      - '.github/workflows/smoke-live-iso.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boot-server-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install image and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
+      - name: Build root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Build hybrid Live ISO
+        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh server dist
+      - name: Validate ISO filesystem
+        run: |
+          iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          test -s "$iso"
+          xorriso -indev "$iso" -find /casper -type f -exec lsdl --
+          test -f "$iso.sha256"
+          test -f "$iso.manifest.json"
+          sha256sum -c "$iso.sha256"
+      - name: QEMU BIOS boot smoke
+        shell: bash
+        run: |
+          iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          set +e
+          timeout 150 qemu-system-x86_64 -m 2048 -smp 2 -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-boot.log 2>&1
+          code=$?
+          set -e
+          cat qemu-boot.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-boot.log
+      - name: Report ISO size
+        run: |
+          iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          bytes=$(stat -c '%s' "$iso")
+          echo "ISO bytes: $bytes"
+          if (( bytes >= 2147483648 )); then echo "Release routing: R2"; else echo "Release routing: eligible for GitHub artifact/release"; fi
