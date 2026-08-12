@@ -1,0 +1,41 @@
+name: KINGAI OS Release Routing
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_path:
+        description: Path to a prepared ISO/IMG artifact on the runner
+        required: true
+        type: string
+      channel:
+        description: Release channel
+        required: true
+        default: dev
+        type: choice
+        options: [dev, beta, rc, stable]
+
+permissions:
+  contents: write
+
+jobs:
+  route-artifact:
+    runs-on: ubuntu-latest
+    env:
+      R2_PREFIX: ${{ inputs.channel }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+      - name: Verify artifact exists
+        run: test -f "${{ inputs.artifact_path }}"
+      - name: Route artifact
+        run: |
+          chmod +x scripts/publish-artifact.sh
+          scripts/publish-artifact.sh "${{ inputs.artifact_path }}"
