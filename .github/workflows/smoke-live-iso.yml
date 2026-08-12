@@ -7,6 +7,7 @@ on:
       - 'scripts/build-live-iso.sh'
       - 'scripts/build-rootfs.sh'
       - 'distro/packages/server.txt'
+      - 'distro/overlay/**'
       - '.github/workflows/smoke-live-iso.yml'
   workflow_dispatch:
 
@@ -29,13 +30,18 @@ jobs:
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
       - name: Build root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Verify no build-host ownership leaked
+        run: |
+          leaked=$(sudo find dist/rootfs-server-amd64 -xdev -uid "$(id -u)" -print -quit)
+          test -z "$leaked" || { echo "build-host UID leaked into rootfs: $leaked"; exit 1; }
       - name: Build hybrid Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh server dist
-      - name: Validate ISO filesystem
+      - name: Validate ISO filesystem and checksums
         run: |
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
           test -s "$iso"
           xorriso -indev "$iso" -find /casper -type f -exec lsdl --
+          xorriso -indev "$iso" -find /md5sum.txt -type f -exec lsdl --
           test -f "$iso.sha256"
           test -f "$iso.manifest.json"
           sha256sum -c "$iso.sha256"
@@ -50,6 +56,11 @@ jobs:
           cat qemu-boot.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-boot.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-boot.log
+          if grep -Eiq "Failed to start casper-md5check|can't execute '/usr/sbin/install-keymap'|update-notifier/.+No such file|var/crash/crash.init.+No such file" qemu-boot.log; then
+            echo 'Live-session compatibility regression detected.' >&2
+            exit 1
+          fi
       - name: Report ISO size
         run: |
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
