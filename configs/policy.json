@@ -1,6 +1,8 @@
 {
   "rules": {
     "filesystem.read": {"risk": 0, "approval_required": false, "owner_only": false},
+    "network.read": {"risk": 0, "approval_required": false, "owner_only": false},
+    "audit.read": {"risk": 0, "approval_required": false, "owner_only": false},
     "filesystem.write": {"risk": 1, "approval_required": false, "owner_only": false},
     "process.execute": {"risk": 2, "approval_required": false, "owner_only": false},
     "service.restart": {"risk": 2, "approval_required": false, "owner_only": false},

@@ -1,0 +1,45 @@
+name: KINGAI OS RootFS Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Distribution profile
+        type: choice
+        required: true
+        default: server
+        options: [server, desktop, iot]
+      arch:
+        description: CPU architecture
+        type: choice
+        required: true
+        default: amd64
+        options: [amd64, arm64]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd qemu-user-static
+      - name: Build root filesystem
+        run: sudo --preserve-env=PATH bash scripts/build-rootfs.sh "${{ inputs.profile }}" "${{ inputs.arch }}" dist
+      - name: Ownership normalization
+        run: sudo chown -R "$USER:$USER" dist
+      - name: Upload developer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-${{ inputs.profile }}-${{ inputs.arch }}-rootfs
+          path: |
+            dist/*.tar.zst
+            dist/*.sha256
+          retention-days: 7

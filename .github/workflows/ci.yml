@@ -18,10 +18,13 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: false
-      - name: Build KINGAI CLI
+      - name: Build KINGAI binaries
         run: |
           mkdir -p dist
           go build -trimpath -o dist/kingai ./cmd/kingai
+          go build -trimpath -o dist/kingaid ./cmd/kingaid
+      - name: Unit tests
+        run: go test ./...
       - name: Vet core
         run: go vet ./...
       - name: Validate shell scripts
@@ -31,11 +34,16 @@ jobs:
           test -f README.md
           test -f VERSION
           test -f SECURITY.md
-          test -f docs/ARCHITECTURE.md
-          test -f docs/ROADMAP.md
-          test -f docs/LEGAL.md
+          test -f configs/policy.json
+          test -f configs/agents.json
+          test -f configs/models.json
+          test -f systemd/kingaid.service
+          test -f scripts/build-rootfs.sh
           test -f profiles/server.yaml
           test -f profiles/desktop.yaml
           test -f profiles/iot.yaml
-      - name: Show version
-        run: ./dist/kingai version
+      - name: Smoke test CLI
+        run: |
+          ./dist/kingai version
+          ./dist/kingai desktop list
+          ./dist/kingai policy check filesystem.read

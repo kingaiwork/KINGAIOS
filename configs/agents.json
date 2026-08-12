@@ -1,0 +1,20 @@
+{
+  "agents": [
+    {
+      "id": "main",
+      "role": "orchestrator",
+      "capabilities": ["filesystem.read", "filesystem.write", "process.execute", "service.restart"]
+    },
+    {
+      "id": "system-ops",
+      "role": "system-operations",
+      "capabilities": ["filesystem.read", "process.execute", "service.restart", "package.install", "network.modify", "boot.modify"]
+    },
+    {
+      "id": "sec-ops",
+      "role": "security-operations",
+      "capabilities": ["filesystem.read", "network.read", "audit.read", "security.modify", "network.modify"]
+    }
+  ],
+  "rule": "Agent manifests never override the central policy engine. Higher-risk capabilities still require policy approval."
+}

@@ -15,4 +15,6 @@ xwayland
 sddm
 dolphin
 konsole
+qml6-module-qtquick-controls
+qml6-module-qtquick-layouts
 zstd
