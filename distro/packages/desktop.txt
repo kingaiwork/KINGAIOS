@@ -16,6 +16,8 @@ sddm
 dolphin
 konsole
 qml-qt6
+qml6-module-qml
+qml6-module-qtcore
 qml6-module-qtquick-controls
 qml6-module-qtquick-layouts
 zstd

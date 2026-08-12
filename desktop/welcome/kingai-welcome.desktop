@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KINGAI Welcome
+Comment=Choose and preview your KINGAI OS desktop experience
+Exec=/usr/lib/kingai/kingai-welcome
+Terminal=false
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel
+X-KDE-StartupNotify=false
