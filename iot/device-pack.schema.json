@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os.kingai.work/schema/device-pack-v1.json",
+  "title": "KINGAI OS Device Pack v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "name", "version", "arch", "vendor", "boot", "artifacts", "security"],
+  "properties": {
+    "schema": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 160},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "arch": {"enum": ["amd64", "arm64"]},
+    "vendor": {"type": "string", "minLength": 1, "maxLength": 120},
+    "board_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 160},
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": {"enum": ["uefi", "uboot", "vendor"]},
+        "firmware_required": {"type": "boolean"},
+        "dtb_required": {"type": "boolean"},
+        "secure_boot_capable": {"type": "boolean"}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "sha256", "size_bytes"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 255},
+          "kind": {"enum": ["kernel", "initrd", "dtb", "firmware", "bootloader", "driver", "config"]},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "license": {"type": "string", "minLength": 1, "maxLength": 160},
+          "source": {"type": "string", "minLength": 1, "maxLength": 2048}
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signed_manifest", "redistribution_reviewed"],
+      "properties": {
+        "signed_manifest": {"type": "boolean"},
+        "redistribution_reviewed": {"type": "boolean"},
+        "minimum_firmware_version": {"type": "string", "maxLength": 128},
+        "notes": {"type": "string", "maxLength": 2000}
+      }
+    }
+  }
+}
