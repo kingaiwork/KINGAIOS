@@ -1,0 +1,34 @@
+profile: desktop
+name: KINGAI OS Desktop
+version_source: VERSION
+base:
+  lineage: ubuntu-26.04-lts
+  architecture:
+    - amd64
+features:
+  desktop: true
+  first_run_welcome: true
+  desktop_switching: true
+  local_ai_runtime: optional
+  rootless_containers: true
+  recovery: true
+desktop_experiences:
+  - kingai-intelligence
+  - kingai-flow
+  - kingai-classic
+kingai:
+  cli: true
+  daemon: true
+  policy_engine: true
+  model_fabric: true
+  memory_fabric: true
+  agent_runtime: true
+  audit: true
+  desktop_agent_panel: true
+size_budget_mib:
+  target: 3175
+  warning: 3584
+  hard: 4096
+artifact:
+  format: iso
+  name: KINGAI-OS-Desktop-${VERSION}-${ARCH}.iso
