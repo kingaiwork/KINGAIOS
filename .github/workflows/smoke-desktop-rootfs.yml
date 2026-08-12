@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.23.x'
           cache: false
@@ -33,7 +33,8 @@ jobs:
         run: |
           root=dist/rootfs-desktop-amd64
           sudo chroot "$root" /usr/bin/kingai desktop list
-          sudo chroot "$root" /usr/bin/qdbus6 --version
+          sudo chroot "$root" dpkg-query -W qdbus-qt6 plasma-desktop plasma-workspace kwin-wayland sddm
+          sudo test -x "$root/usr/bin/qdbus6"
           sudo test -x "$root/usr/lib/kingai/kingai-welcome"
           sudo test -f "$root/etc/xdg/autostart/kingai-welcome.desktop"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
