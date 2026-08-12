@@ -15,6 +15,9 @@ xwayland
 sddm
 dolphin
 konsole
+qml-qt6
 qml6-module-qtquick-controls
 qml6-module-qtquick-layouts
 zstd
+linux-generic
+casper

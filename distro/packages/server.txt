@@ -9,3 +9,5 @@ nftables
 dbus
 sudo
 zstd
+linux-generic
+casper

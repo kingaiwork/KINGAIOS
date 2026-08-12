@@ -1,0 +1,8 @@
+KINGAI OS
+Copyright 2026 KINGAI / DXTECH LLC.
+
+KINGAI-authored source code in this repository is intended to be distributed under the repository license unless a file or directory states otherwise.
+
+KINGAI OS is a Linux distribution project that builds on and integrates third-party open-source components. Linux, Ubuntu-derived packages, KDE/Plasma, systemd, GNU software, firmware, model runtimes and other upstream components remain under their respective copyrights, licenses and trademark policies. The KINGAI repository license does not relicense those upstream works.
+
+Official release engineering must retain applicable copyright notices, license texts, corresponding-source obligations, model redistribution restrictions, SBOM/provenance records and release signatures.

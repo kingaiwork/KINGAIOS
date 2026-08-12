@@ -1,0 +1,83 @@
+name: KINGAI OS Live ISO Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Live ISO profile
+        required: true
+        type: choice
+        default: server
+        options: [server, desktop]
+      publish:
+        description: Route completed ISO to GitHub/R2 according to size policy
+        required: true
+        type: boolean
+        default: false
+      channel:
+        description: Distribution channel
+        required: true
+        type: choice
+        default: dev
+        options: [dev, beta, rc, stable]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      R2_PREFIX: ${{ inputs.channel }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools awscli
+      - name: Build root filesystem
+        run: sudo --preserve-env=PATH bash scripts/build-rootfs.sh "${{ inputs.profile }}" amd64 dist
+      - name: Build hybrid live ISO
+        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh "${{ inputs.profile }}" dist
+      - name: Normalize ownership
+        run: sudo chown -R "$USER:$USER" dist
+      - name: Locate ISO
+        id: iso
+        shell: bash
+        run: |
+          p=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          test -n "$p"
+          bytes=$(stat -c '%s' "$p")
+          echo "path=$p" >> "$GITHUB_OUTPUT"
+          echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
+          if (( bytes < 2147483648 )); then echo "small=true" >> "$GITHUB_OUTPUT"; else echo "small=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Upload small developer ISO artifact
+        if: steps.iso.outputs.small == 'true' && inputs.publish == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-${{ inputs.profile }}-live-iso
+          path: |
+            ${{ steps.iso.outputs.path }}
+            ${{ steps.iso.outputs.path }}.sha256
+            ${{ steps.iso.outputs.path }}.manifest.json
+          retention-days: 3
+      - name: Upload metadata for large developer ISO
+        if: steps.iso.outputs.small == 'false' && inputs.publish == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-${{ inputs.profile }}-live-iso-metadata
+          path: |
+            ${{ steps.iso.outputs.path }}.sha256
+            ${{ steps.iso.outputs.path }}.manifest.json
+          retention-days: 7
+      - name: Publish according to size policy
+        if: inputs.publish == true
+        run: bash scripts/publish-artifact.sh "${{ steps.iso.outputs.path }}"
