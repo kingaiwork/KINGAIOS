@@ -1,22 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
-)
+	"time"
 
-type status struct {
-	Name       string `json:"name"`
-	Version    string `json:"version"`
-	Channel    string `json:"channel"`
-	GoVersion  string `json:"go_version"`
-	Platform   string `json:"platform"`
-	D4         bool   `json:"d4"`
-	LocalFirst bool   `json:"local_first"`
-}
+	"github.com/kingaiwork/KINGAIOS/internal/desktop"
+	"github.com/kingaiwork/KINGAIOS/internal/policy"
+)
 
 var version = "0.1.0-dev"
 
@@ -27,9 +24,10 @@ Usage:
   kingai version
   kingai status [--json]
   kingai doctor
-
-This is the D4 Developer Foundation CLI. Privileged actions will be routed
-through the future capability/policy execution broker instead of direct root shells.
+  kingai policy check <capability> [target]
+  kingai desktop list
+  kingai desktop show
+  kingai desktop set <kingai-intelligence|kingai-flow|kingai-classic>
 `)
 }
 
@@ -38,35 +36,106 @@ func main() {
 		usage()
 		return
 	}
-
 	switch os.Args[1] {
 	case "version":
 		fmt.Printf("KINGAI OS %s\n", version)
 	case "status":
-		s := status{
-			Name:       "KINGAI OS",
-			Version:    version,
-			Channel:    "dev",
-			GoVersion:  runtime.Version(),
-			Platform:   runtime.GOOS + "/" + runtime.GOARCH,
-			D4:         true,
-			LocalFirst: true,
-		}
-		if len(os.Args) > 2 && strings.EqualFold(os.Args[2], "--json") {
-			_ = json.NewEncoder(os.Stdout).Encode(s)
-			return
-		}
-		fmt.Printf("System:      %s\n", s.Name)
-		fmt.Printf("Version:     %s\n", s.Version)
-		fmt.Printf("Channel:     %s\n", s.Channel)
-		fmt.Printf("Platform:    %s\n", s.Platform)
-		fmt.Printf("Architecture: D4 Sovereign Distributed Intelligence\n")
+		status(os.Args[2:])
 	case "doctor":
-		fmt.Println("KINGAI Doctor")
-		fmt.Println("[ok] CLI runtime")
-		fmt.Println("[info] developer foundation: policy/model/memory daemons are not yet enabled")
+		doctor()
+	case "policy":
+		policyCmd(os.Args[2:])
+	case "desktop":
+		desktopCmd(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
 	}
+}
+
+func status(args []string) {
+	var remote map[string]any
+	if err := daemonJSON(http.MethodGet, "/v1/status", nil, &remote); err == nil {
+		if len(args) > 0 && strings.EqualFold(args[0], "--json") {
+			_ = json.NewEncoder(os.Stdout).Encode(remote)
+			return
+		}
+		fmt.Printf("System:       %v\nVersion:      %v\nArchitecture: %v\nPolicy:       %v\n", remote["name"], remote["version"], remote["architecture"], remote["policy"])
+		return
+	}
+	fallback := map[string]any{"name": "KINGAI OS", "version": version, "channel": "dev", "platform": runtime.GOOS + "/" + runtime.GOARCH, "daemon": "offline"}
+	if len(args) > 0 && strings.EqualFold(args[0], "--json") {
+		_ = json.NewEncoder(os.Stdout).Encode(fallback)
+		return
+	}
+	fmt.Printf("System:  KINGAI OS\nVersion: %s\nPlatform: %s/%s\nDaemon:  offline\n", version, runtime.GOOS, runtime.GOARCH)
+}
+
+func doctor() {
+	fmt.Println("KINGAI Doctor")
+	checks := []struct{ name, path string }{{"policy", "/etc/kingai/policy.json"}, {"system config", "/etc/kingai/system.json"}}
+	if err := daemonJSON(http.MethodGet, "/healthz", nil, &map[string]any{}); err != nil {
+		fmt.Printf("[warn] kingaid: %v\n", err)
+	} else {
+		fmt.Println("[ok] kingaid")
+	}
+	for _, c := range checks {
+		if _, err := os.Stat(c.path); err == nil {
+			fmt.Printf("[ok] %s\n", c.name)
+		} else {
+			fmt.Printf("[info] %s not installed at %s\n", c.name, c.path)
+		}
+	}
+}
+
+func policyCmd(args []string) {
+	if len(args) < 2 || args[0] != "check" {
+		usage(); os.Exit(2)
+	}
+	req := policy.Request{Agent: "cli", Capability: args[1]}
+	if len(args) > 2 { req.Target = args[2] }
+	var out policy.Result
+	if err := daemonJSON(http.MethodPost, "/v1/policy/evaluate", req, &out); err != nil {
+		out = policy.Default().Evaluate(req)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(out)
+	if !out.Allowed { os.Exit(3) }
+}
+
+func desktopCmd(args []string) {
+	if len(args) < 1 { usage(); os.Exit(2) }
+	switch args[0] {
+	case "list":
+		for _, e := range desktop.List() { fmt.Printf("%s\t%s\n", e.ID, e.Name) }
+	case "show":
+		v, err := desktop.Current(); if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+		if v == "" { fmt.Println("unselected") } else { fmt.Println(v) }
+	case "set":
+		if len(args) != 2 { usage(); os.Exit(2) }
+		if err := desktop.Set(args[1], true); err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+		fmt.Printf("desktop experience set to %s\n", args[1])
+	default:
+		usage(); os.Exit(2)
+	}
+}
+
+func daemonJSON(method, path string, body any, out any) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second); defer cancel()
+	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) { return (&net.Dialer{}).DialContext(ctx, "unix", "/run/kingai/kingaid.sock") }}
+	client := &http.Client{Transport: tr, Timeout: 2*time.Second}
+	var req *http.Request
+	var err error
+	if body == nil {
+		req, err = http.NewRequestWithContext(ctx, method, "http://kingai"+path, nil)
+	} else {
+		pr, pw := net.Pipe(); _ = pr; _ = pw
+		b, e := json.Marshal(body); if e != nil { return e }
+		req, err = http.NewRequestWithContext(ctx, method, "http://kingai"+path, strings.NewReader(string(b)))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if err != nil { return err }
+	resp, err := client.Do(req); if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 { return fmt.Errorf("daemon returned %s", resp.Status) }
+	return json.NewDecoder(resp.Body).Decode(out)
 }

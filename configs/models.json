@@ -1,0 +1,10 @@
+{
+  "strategy": "provider-neutral",
+  "default_mode": "hybrid",
+  "providers": [],
+  "routing": {
+    "private": "local-preferred",
+    "offline": "local-only",
+    "general": "best-available"
+  }
+}

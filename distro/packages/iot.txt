@@ -1,0 +1,9 @@
+systemd
+systemd-sysv
+systemd-resolved
+ca-certificates
+iproute2
+nftables
+dbus
+curl
+zstd

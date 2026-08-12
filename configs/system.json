@@ -1,0 +1,11 @@
+{
+  "architecture": "D4",
+  "local_first": true,
+  "cloud_required": false,
+  "socket": "/run/kingai/kingaid.sock",
+  "memory_root": "/var/lib/kingai/memory",
+  "model_root": "/var/lib/kingai/models",
+  "audit_root": "/var/log/kingai",
+  "update_channel": "dev",
+  "telemetry": "off-by-default"
+}
