@@ -17,7 +17,7 @@ permissions:
 jobs:
   boot-server-amd64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -27,7 +27,7 @@ jobs:
       - name: Install image and VM tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 ovmf
       - name: Build root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
       - name: Verify no build-host ownership leaked
@@ -52,17 +52,41 @@ jobs:
         run: |
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
           set +e
-          timeout 150 qemu-system-x86_64 -m 2048 -smp 2 -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-boot.log 2>&1
+          timeout 150 qemu-system-x86_64 -m 2048 -smp 2 -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-bios.log 2>&1
           code=$?
           set -e
-          cat qemu-boot.log
+          cat qemu-bios.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
-          grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-boot.log
-          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-boot.log
-          if grep -Eiq "Failed to start casper-md5check|can't execute '/usr/sbin/install-keymap'|update-notifier/.+No such file|var/crash/crash.init.+No such file" qemu-boot.log; then
-            echo 'Live-session compatibility regression detected.' >&2
+          grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-bios.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-bios.log
+          if grep -Eiq "Failed to start casper-md5check|can't execute '/usr/sbin/install-keymap'|update-notifier/.+No such file|var/crash/crash.init.+No such file" qemu-bios.log; then
+            echo 'BIOS live-session compatibility regression detected.' >&2
             exit 1
           fi
+      - name: QEMU UEFI boot smoke
+        shell: bash
+        run: |
+          iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          code_file=/usr/share/OVMF/OVMF_CODE_4M.fd
+          vars_file=/usr/share/OVMF/OVMF_VARS_4M.fd
+          if [[ ! -f "$code_file" || ! -f "$vars_file" ]]; then
+            code_file=/usr/share/OVMF/OVMF_CODE.fd
+            vars_file=/usr/share/OVMF/OVMF_VARS.fd
+          fi
+          test -f "$code_file"
+          test -f "$vars_file"
+          cp "$vars_file" ovmf-vars.fd
+          set +e
+          timeout 150 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file="$code_file" \
+            -drive if=pflash,format=raw,file=ovmf-vars.fd \
+            -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-uefi.log 2>&1
+          code=$?
+          set -e
+          cat qemu-uefi.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-uefi.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-uefi.log
       - name: Report ISO size
         run: |
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
