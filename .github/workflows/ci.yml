@@ -13,8 +13,8 @@ jobs:
   core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.23.x'
           cache: false
@@ -44,8 +44,10 @@ jobs:
           test -f systemd/kingaid.service
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
+          test -f scripts/build-iot-image.sh
           test -f update/README.md
           test -f installer/README.md
+          test -f iot/README.md
           test -f profiles/server.yaml
           test -f profiles/desktop.yaml
           test -f profiles/iot.yaml
@@ -55,3 +57,54 @@ jobs:
           ./dist/kingai desktop list
           ./dist/kingai policy check filesystem.read
           ./dist/kingai-installer version
+      - name: End-to-end kingaid local IPC and security smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          export KINGAI_SOCKET="$tmp/kingaid.sock"
+          export KINGAI_POLICY="$PWD/configs/policy.json"
+          export KINGAI_AGENTS="$PWD/configs/agents.json"
+          export KINGAI_MODELS="$PWD/configs/models.json"
+          export KINGAI_AUDIT="$tmp/audit.jsonl"
+          export KINGAI_PUBLIC_STATUS="$tmp/public-status.json"
+          ./dist/kingaid >"$tmp/kingaid.log" 2>&1 &
+          pid=$!
+          cleanup() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
+          trap cleanup EXIT
+          for _ in $(seq 1 50); do
+            [[ -S "$KINGAI_SOCKET" && -f "$KINGAI_PUBLIC_STATUS" ]] && break
+            sleep 0.1
+          done
+          test -S "$KINGAI_SOCKET"
+          test -f "$KINGAI_PUBLIC_STATUS"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/healthz > "$tmp/health.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/status > "$tmp/status.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" \
+            -H 'Content-Type: application/json' \
+            -d '{"agent":"main","capability":"filesystem.read"}' \
+            http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" \
+            -H 'Content-Type: application/json' \
+            -d '{"agent":"system-ops","capability":"service.restart"}' \
+            http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
+          python3 - "$tmp" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          assert json.loads((root/'health.json').read_text())['ok'] is True
+          status = json.loads((root/'status.json').read_text())
+          assert status['name'] == 'KINGAI OS'
+          assert status['agent_registry'] == 'enabled'
+          assert json.loads((root/'main-policy.json').read_text())['allowed'] is True
+          spoof = json.loads((root/'spoof-policy.json').read_text())
+          assert spoof['allowed'] is False
+          assert 'identity' in spoof['reason']
+          public = json.loads((root/'public-status.json').read_text())
+          assert public['product'] == 'KINGAI OS'
+          assert public['registered_agents'] >= 1
+          forbidden = ('prompt','token','secret','api_key','password','memory_content')
+          lowered = (root/'public-status.json').read_text().lower()
+          assert not any(word in lowered for word in forbidden)
+          PY
+          test "$(stat -c '%a' "$KINGAI_PUBLIC_STATUS")" = 644
+          test -s "$KINGAI_AUDIT"
