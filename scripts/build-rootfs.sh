@@ -49,7 +49,6 @@ install -Dm644 configs/models.json "$ROOT/etc/kingai/models.json"
 install -Dm644 configs/agents.json "$ROOT/etc/kingai/agents.json"
 cp -a distro/overlay/. "$ROOT/"
 
-# Keep KINGAI identity consistent even if the upstream base uses an os-release symlink.
 rm -f "$ROOT/etc/os-release" "$ROOT/usr/lib/os-release"
 install -Dm644 distro/overlay/etc/os-release "$ROOT/usr/lib/os-release"
 ln -s ../usr/lib/os-release "$ROOT/etc/os-release"
@@ -67,6 +66,7 @@ if [[ "$PROFILE" != "iot" ]]; then
   test -n "$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -print -quit)" || { echo "initramfs missing from rootfs" >&2; exit 1; }
 fi
 
-tar --numeric-owner --xattrs --acls -C "$ROOT" -I 'zstd -19 -T0' -cf "$OUT/KINGAI-OS-${profile:-$PROFILE}-${ARCH}-rootfs.tar.zst" .
-sha256sum "$OUT/KINGAI-OS-${profile:-$PROFILE}-${ARCH}-rootfs.tar.zst" > "$OUT/KINGAI-OS-${profile:-$PROFILE}-${ARCH}-rootfs.tar.zst.sha256"
-echo "Built KINGAI OS rootfs: $PROFILE/$ARCH"
+ARTIFACT="$OUT/KINGAI-OS-${PROFILE}-${ARCH}-rootfs.tar.zst"
+tar --numeric-owner --xattrs --acls -C "$ROOT" -I 'zstd -19 -T0' -cf "$ARTIFACT" .
+sha256sum "$ARTIFACT" > "$ARTIFACT.sha256"
+echo "Built $ARTIFACT"

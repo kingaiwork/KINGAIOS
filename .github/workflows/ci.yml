@@ -33,12 +33,15 @@ jobs:
         run: |
           test -f README.md
           test -f VERSION
+          test -f LICENSE
+          test -f NOTICE
           test -f SECURITY.md
           test -f configs/policy.json
           test -f configs/agents.json
           test -f configs/models.json
           test -f systemd/kingaid.service
           test -f scripts/build-rootfs.sh
+          test -f scripts/build-live-iso.sh
           test -f profiles/server.yaml
           test -f profiles/desktop.yaml
           test -f profiles/iot.yaml
