@@ -55,10 +55,15 @@ jobs:
           fi
           echo "profile=$profile" >> "$GITHUB_OUTPUT"
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
-      - name: Install build, VM and publish tooling
+      - name: Run core release tests
+        run: |
+          go test ./...
+          go vet ./...
+          bash -n scripts/*.sh desktop/welcome/*.sh
+      - name: Install build and VM tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 awscli jq
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 jq
       - name: Build KINGAI root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh "${{ steps.params.outputs.profile }}" amd64 dist
       - name: Verify no build-host ownership leaked
@@ -136,7 +141,7 @@ jobs:
           - Update trust: signed-manifest verification foundation included
           - Agent policy: local peer identity + manifest + central capability policy
 
-          The image was rebuilt from source in this workflow and passed checksum and QEMU boot verification before publication.
+          The image was rebuilt from source in this workflow and passed core tests, ownership checks, checksum validation and QEMU boot verification before publication.
           EOF
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "title=$title" >> "$GITHUB_OUTPUT"
@@ -152,7 +157,7 @@ jobs:
             '${{ steps.artifact.outputs.iso }}' \
             '${{ steps.artifact.outputs.iso }}.sha256' \
             '${{ steps.artifact.outputs.manifest }}'
-      - name: Validate R2 credentials for large ISO
+      - name: Validate R2 environment for large ISO
         if: steps.artifact.outputs.large == 'true'
         shell: bash
         run: |
@@ -160,6 +165,7 @@ jobs:
           : "${R2_BUCKET:?R2_BUCKET secret is required for >=2GiB artifacts}"
           : "${AWS_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID secret is required for >=2GiB artifacts}"
           : "${AWS_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY secret is required for >=2GiB artifacts}"
+          command -v aws >/dev/null || { echo 'AWS CLI is required only for the R2 large-artifact path on this runner.' >&2; exit 1; }
       - name: Publish large ISO to R2
         if: steps.artifact.outputs.large == 'true'
         env:
