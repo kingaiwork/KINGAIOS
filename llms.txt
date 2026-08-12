@@ -1,0 +1,52 @@
+# KINGAI OS
+
+Official OS site: https://os.kingai.work
+KINGAI main site: https://www.kingai.work
+Repository: https://github.com/kingaiwork/KINGAIOS
+Documentation: docs/INDEX.md
+Business and partnership: vip@kingai.work
+
+Project: KINGAI OS
+Architecture: D4 Sovereign Distributed Intelligence Operating System
+Status: Developer Foundation / Pre-Alpha
+Base technology: Ubuntu 26.04 LTS technology base with KINGAI-owned intelligence, governance, security, update, desktop and distribution layers
+Primary principles: AI-native, Agent-native, Local-first, Secure-by-default, Model-neutral, Cloud-neutral, Controlled-evolution
+
+Official editions:
+- KINGAI OS Server
+- KINGAI OS Desktop
+- KINGAI OS IoT / Edge
+
+Desktop experiences:
+- KINGAI Intelligence
+- KINGAI Flow
+- KINGAI Classic
+
+Core layers:
+- KINGAI Intelligence
+- KINGAI Memory
+- KINGAI Governance
+- KINGAI Agent Runtime
+- KINGAI Model Fabric
+- KINGAI Security
+- KINGAI Trust and Update Chain
+- KINGAI Desktop Experience
+
+Execution adapters may include:
+- Native runtime
+- OpenClaw
+- MCP
+- Codex
+- Browser runtime
+- Rootless containers
+- Isolated VM/MicroVM backends
+
+Distribution policy:
+- Source code and metadata: GitHub
+- Large artifacts at or above 2 GiB: KINGAI object storage / Cloudflare R2
+- Public download namespace: https://os.kingai.work/download
+- Updates: https://os.kingai.work/updates
+- Repository: https://os.kingai.work/repo
+
+Legal note:
+KINGAI OS is independently developed on the Ubuntu 26.04 LTS technology base and follows applicable open-source licenses and trademark rules.
