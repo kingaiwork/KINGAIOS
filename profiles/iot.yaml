@@ -1,0 +1,30 @@
+profile: iot
+name: KINGAI OS IoT / Edge
+version_source: VERSION
+base:
+  lineage: ubuntu-26.04-lts
+  architecture:
+    - arm64
+    - amd64
+features:
+  desktop: false
+  headless: true
+  local_ai_runtime: optional
+  device_packs: true
+  ota_updates: true
+  recovery: true
+kingai:
+  cli: true
+  daemon: true
+  policy_engine: true
+  model_fabric: true
+  memory_fabric: true
+  edge_agent_runtime: true
+  audit: true
+size_budget_mib:
+  target: 600
+  warning: 750
+  hard: 900
+artifact:
+  format: img.xz
+  name: KINGAI-OS-IoT-${VERSION}-${ARCH}.img.xz
