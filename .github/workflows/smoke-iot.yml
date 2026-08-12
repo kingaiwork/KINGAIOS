@@ -1,0 +1,69 @@
+name: KINGAI OS IoT Edge Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'configs/**'
+      - 'distro/packages/iot.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-iot-image.sh'
+      - 'iot/**'
+      - '.github/workflows/smoke-iot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  edge-rootfs:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install cross-architecture and filesystem tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd qemu-user-static binfmt-support e2fsprogs xz-utils
+          sudo update-binfmts --enable qemu-aarch64 || true
+      - name: Build Ubuntu 26.04 based IoT rootfs
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh iot "${{ matrix.arch }}" dist
+      - name: Validate KINGAI userspace
+        run: |
+          root="dist/rootfs-iot-${{ matrix.arch }}"
+          sudo chroot "$root" /usr/bin/kingai version
+          sudo test -x "$root/usr/lib/kingai/kingaid"
+          sudo test -x "$root/usr/lib/kingai/kingai-update"
+          grep -q '^NAME="KINGAI OS"' "$root/usr/lib/os-release"
+          test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+      - name: Build generic Edge filesystem image
+        run: sudo bash scripts/build-iot-image.sh "${{ matrix.arch }}" dist
+      - name: Validate compressed Edge artifact
+        run: |
+          sudo chown -R "$USER:$USER" dist
+          img=$(find dist -maxdepth 1 -name "KINGAI-OS-IoT-*-${{ matrix.arch }}.img.xz" -print -quit)
+          test -s "$img"
+          sha256sum -c "$img.sha256"
+          python3 - "$img.manifest.json" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1]))
+          assert d['product']=='KINGAI OS'
+          assert d['edition']=='IoT / Edge'
+          assert d['bootable'] is False
+          assert d['device_pack_required'] is True
+          assert d['arch'] in ('amd64','arm64')
+          PY
+          bytes=$(stat -c '%s' "$img")
+          echo "Compressed IoT image bytes: $bytes"
+          if (( bytes > 943718400 )); then echo 'IoT hard image budget exceeded (900 MiB).' >&2; exit 1; fi
