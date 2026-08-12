@@ -21,6 +21,7 @@ qml6-module-qml
 qml6-module-qtcore
 qml6-module-qtquick-controls
 qml6-module-qtquick-layouts
+qdbus-qt6
 zstd
 linux-generic
 casper

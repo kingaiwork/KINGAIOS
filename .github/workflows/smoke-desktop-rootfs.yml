@@ -1,0 +1,50 @@
+name: KINGAI OS Desktop RootFS Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'internal/desktop/**'
+      - 'distro/packages/desktop.txt'
+      - '.github/workflows/smoke-desktop-rootfs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install rootfs tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd
+      - name: Build Ubuntu 26.04 based KINGAI Desktop RootFS
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
+      - name: Validate Desktop Core
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo chroot "$root" /usr/bin/kingai desktop list
+          sudo chroot "$root" /usr/bin/qdbus6 --version
+          sudo test -x "$root/usr/lib/kingai/kingai-welcome"
+          sudo test -f "$root/etc/xdg/autostart/kingai-welcome.desktop"
+          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
+          sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('dist/rootfs-desktop-amd64/usr/share/plasma/look-and-feel')
+          for name in ('org.kingai.intelligence','org.kingai.flow','org.kingai.classic'):
+              p=root/name/'manifest.json'
+              data=json.loads(p.read_text())
+              assert data['KPackageStructure']=='Plasma/LookAndFeel'
+              assert data['X-Plasma-API-Minimum-Version']=='6.0'
+          PY
