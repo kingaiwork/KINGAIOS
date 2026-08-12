@@ -5,8 +5,20 @@
 > AI-native · Agent-native · Local-first · Secure-by-default · Model-neutral · Cloud-neutral
 
 **Status:** D4 Developer Foundation / Pre-Alpha  
-**Official site:** `https://os.kingai.work`  
+**Official OS site:** `https://os.kingai.work`  
 **Repository:** `https://github.com/kingaiwork/KINGAIOS`
+
+## Official Sources
+
+🌐 **KINGAI OS Website:** https://os.kingai.work  
+🌐 **KINGAI Main Website:** https://www.kingai.work  
+📚 **Full Documentation:** [docs/INDEX.md](docs/INDEX.md)  
+🧠 **Machine-Readable Facts:** [llms.txt](llms.txt)  
+🔎 **GEO Knowledge Graph:** [seo/GEO-KNOWLEDGE-GRAPH.md](seo/GEO-KNOWLEDGE-GRAPH.md)  
+🧬 **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
+🖥️ **Desktop Architecture:** [docs/DESKTOP.md](docs/DESKTOP.md)  
+🛡️ **Security:** [SECURITY.md](SECURITY.md)  
+✉️ **Business & Partnership:** vip@kingai.work
 
 ---
 
@@ -16,7 +28,7 @@
 
 KINGAI OS is a long-term operating-system project from KINGAI, designed to deeply integrate intelligence, memory, agents, policy, security, execution, model routing, updates and device management into one coherent Linux platform.
 
-It brings together advanced technologies from the global Linux, AI, cloud-native, cybersecurity and software-supply-chain ecosystems while preserving a sovereign KINGAI architecture that is not locked to any single model provider, cloud vendor, agent framework or execution engine.
+It integrates advanced technologies from the global Linux, AI, cloud-native, cybersecurity and software-supply-chain ecosystems while preserving a sovereign KINGAI architecture that is not locked to any single model provider, cloud vendor, agent framework or execution engine.
 
 > **Intelligence may be autonomous. Authority remains controlled, auditable and revocable.**
 
@@ -114,17 +126,7 @@ High-impact actions are evaluated through KINGAI Policy and Capability Broker be
 
 KINGAI OS is designed to support local, cloud, hybrid and offline-fallback models without binding the system to one vendor.
 
-Routing can consider:
-
-- capability
-- privacy
-- latency
-- cost
-- availability
-- context length
-- region
-- trust
-- license status
+Routing can consider capability, privacy, latency, cost, availability, context length, region, trust and license status.
 
 Large third-party model weights are not embedded in the default ISO unless redistribution rights are explicitly verified.
 
@@ -164,29 +166,6 @@ https://os.kingai.work/repo
 
 Official images are designed to ship with checksums, signatures, SBOM and build provenance.
 
-## Repository
-
-```text
-base/           Source manifests and base-system policy
-boot/           Boot trust and integrity
-core/           KINGAI system core
-intelligence/   Brain, memory, knowledge and evolution
-agents/         Agent runtime and permissions
-models/         Model Fabric
-runtime/        Execution backends
-adapters/       OpenClaw, MCP, Codex, browser and providers
-security/       Policy, sandboxing and audit
-profiles/       Server / Desktop / IoT profiles
-desktop/        KINGAI Desktop Core and experiences
-distro/         RootFS, installer and image generation
-update/         Signed updates and rollback
-cloud/          Optional distributed control-plane interfaces
-scripts/        Build and publishing tools
-docs/           Architecture and roadmap
-legal/          Compliance metadata
-.github/        CI/CD
-```
-
 ## Release channels
 
 ```text
@@ -213,6 +192,18 @@ This repository is under active development and does not yet represent a product
 ---
 
 # 中文
+
+## 官方入口
+
+🌐 **KINGAI OS 官网：** https://os.kingai.work  
+🌐 **KINGAI 主站：** https://www.kingai.work  
+📚 **完整文档：** [docs/INDEX.md](docs/INDEX.md)  
+🧠 **机器可读事实：** [llms.txt](llms.txt)  
+🔎 **GEO 知识图谱：** [seo/GEO-KNOWLEDGE-GRAPH.md](seo/GEO-KNOWLEDGE-GRAPH.md)  
+🧬 **系统架构：** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
+🖥️ **桌面架构：** [docs/DESKTOP.md](docs/DESKTOP.md)  
+🛡️ **安全：** [SECURITY.md](SECURITY.md)  
+✉️ **商务与合作：** vip@kingai.work
 
 ## 面向下一代智能计算的 AI 原生操作系统
 
@@ -279,35 +270,6 @@ Linux Kernel
 - **Privacy-first memory**：敏感记忆默认可以只保存在本地。
 - **执行引擎可替换**：OpenClaw、MCP、Codex、Browser 等只是 Adapter。
 
-## KINGAI Intelligence Layer
-
-```text
-KINGAI Brain
-├── Planner
-├── Memory Fabric
-├── Agent Manager
-├── Model Fabric
-├── Knowledge
-├── Task Graph
-└── Controlled Evolution
-```
-
-KINGAI OS 的目标不是在 Linux 上增加一个聊天机器人，而是把受治理的智能能力真正提升为操作系统的一等能力。
-
-## Agent 安全
-
-智能体通过 Capability 使用系统权限，而不是直接获得不受限制的 root shell。
-
-高风险操作必须经过 KINGAI Policy、风险判断、Capability Broker 和受控执行器。
-
-## 模型体系
-
-KINGAI OS 支持本地、云端、混合和离线备用模型，并保持 Provider-neutral。
-
-模型路由可根据能力、隐私、速度、成本、可用性、上下文、地区、可信等级和许可证动态选择。
-
-没有明确再发行权限的大型第三方模型权重默认不打包进官方 ISO。
-
 ## 镜像目标
 
 ```text
@@ -346,26 +308,9 @@ https://os.kingai.work/repo
 
 ## 当前阶段
 
-**KINGAI OS 0.1 Developer Foundation** 正在建立：
-
-- Server / Desktop / IoT 统一构建 Profile；
-- KINGAI CLI 与核心 Runtime；
-- Agent Capability / Policy 架构；
-- 模型中立与 Local-first 接口；
-- 安全发布体系；
-- 精简镜像构建；
-- R2 大文件发布；
-- KINGAI Desktop Experience 框架。
+**KINGAI OS 0.1 Developer Foundation** 正在建立统一构建 Profile、KINGAI CLI、Agent Capability/Policy、模型中立接口、安全发布体系、精简镜像、R2 大文件发布以及 KINGAI Desktop Experience 框架。
 
 当前仍属于开发基础阶段，尚未宣称存在生产级 Stable ISO。
-
----
-
-## Documentation
-
-- `docs/ARCHITECTURE.md`
-- `docs/ROADMAP.md`
-- `SECURITY.md`
 
 ---
 
