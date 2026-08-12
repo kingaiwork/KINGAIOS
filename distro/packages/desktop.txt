@@ -7,6 +7,7 @@ iproute2
 nftables
 dbus
 sudo
+util-linux
 network-manager
 plasma-desktop
 plasma-workspace

@@ -24,12 +24,13 @@ jobs:
           go build -trimpath -o dist/kingai ./cmd/kingai
           go build -trimpath -o dist/kingaid ./cmd/kingaid
           go build -trimpath -o dist/kingai-update ./cmd/kingai-update
+          go build -trimpath -o dist/kingai-installer ./cmd/kingai-installer
       - name: Unit tests
         run: go test ./...
       - name: Vet core
         run: go vet ./...
       - name: Validate shell scripts
-        run: bash -n scripts/*.sh
+        run: bash -n scripts/*.sh desktop/welcome/*.sh
       - name: Check required files
         run: |
           test -f README.md
@@ -44,6 +45,7 @@ jobs:
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
           test -f update/README.md
+          test -f installer/README.md
           test -f profiles/server.yaml
           test -f profiles/desktop.yaml
           test -f profiles/iot.yaml
@@ -52,3 +54,4 @@ jobs:
           ./dist/kingai version
           ./dist/kingai desktop list
           ./dist/kingai policy check filesystem.read
+          ./dist/kingai-installer version

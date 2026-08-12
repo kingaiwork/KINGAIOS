@@ -8,6 +8,7 @@ iproute2
 nftables
 dbus
 sudo
+util-linux
 zstd
 linux-generic
 casper
