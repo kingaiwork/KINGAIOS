@@ -6,7 +6,12 @@ on:
     paths:
       - 'desktop/**'
       - 'internal/desktop/**'
+      - 'configs/**'
+      - 'systemd/**'
+      - 'sysusers/**'
       - 'distro/packages/desktop.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
       - '.github/workflows/smoke-desktop-rootfs.yml'
   workflow_dispatch:
 
@@ -39,6 +44,9 @@ jobs:
           sudo test -f "$root/etc/xdg/autostart/kingai-welcome.desktop"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
           sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
+          test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+          leaked=$(sudo find "$root/etc/kingai" "$root/usr/lib/kingai" "$root/usr/share/kingai" -uid "$(id -u)" -print -quit)
+          test -z "$leaked" || { echo "build-host ownership leaked into KINGAI desktop files: $leaked"; exit 1; }
           python3 - <<'PY'
           import json
           from pathlib import Path
