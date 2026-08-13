@@ -26,7 +26,7 @@ func usage(){fmt.Print(`KINGAI OS CLI
 Usage:
   kingai version
   kingai status [--json]
-  kingai doctor [--json]
+  kingai doctor [--json] [--repair-safe]
   kingai policy check <capability> [target]
   kingai desktop list
   kingai desktop show
@@ -40,14 +40,30 @@ func status(args []string){var remote map[string]any;if err:=daemonJSON(http.Met
 
 func doctor(args []string){
 	jsonMode:=false
-	for _,arg:=range args{if arg=="--json"{jsonMode=true;continue};usage();os.Exit(2)}
+	repairSafe:=false
+	for _,arg:=range args{
+		switch arg{case"--json":jsonMode=true;case"--repair-safe":repairSafe=true;default:usage();os.Exit(2)}
+	}
+	if repairSafe&&os.Geteuid()!=0{fmt.Fprintln(os.Stderr,"kingai doctor --repair-safe requires root; diagnostic-only doctor does not");os.Exit(5)}
+	root:=os.Getenv("KINGAI_DIAGNOSTIC_ROOT")
 	var health map[string]any
 	daemonErr:=daemonJSON(http.MethodGet,"/healthz",nil,&health)
-	report:=diagnostics.Run(diagnostics.Options{Root:os.Getenv("KINGAI_DIAGNOSTIC_ROOT"),DaemonError:daemonErr})
+	report:=diagnostics.Run(diagnostics.Options{Root:root,DaemonError:daemonErr})
+	if repairSafe{
+		repairs:=diagnostics.ApplySafeRepairs(root,report)
+		if len(repairs)>0{
+			report=diagnostics.Run(diagnostics.Options{Root:root,DaemonError:daemonErr})
+			report.Repairs=repairs
+		}
+	}
 	if jsonMode{enc:=json.NewEncoder(os.Stdout);enc.SetIndent("","  ");_=enc.Encode(report)}else{
 		fmt.Println("KINGAI Health Intelligence")
 		fmt.Printf("Status: %s   Score: %d/100\n",strings.ToUpper(report.Status),report.Score)
-		for _,c:=range report.Checks{fmt.Printf("[%s] %-16s %s\n",c.Status,c.ID,c.Summary)}
+		for _,c:=range report.Checks{
+			fmt.Printf("[%s] %-16s %s\n",c.Status,c.ID,c.Summary)
+			if c.ActionID!=""&&(c.Status=="warn"||c.Status=="fail"){fmt.Printf("       action=%s  mode=%s\n",c.ActionID,c.RemediationMode)}
+		}
+		if len(report.Repairs)>0{fmt.Println("Safe repairs:");for _,r:=range report.Repairs{fmt.Printf("  [%s] %s: %s\n",r.Status,r.ActionID,r.Summary)}}
 		if len(report.NextActions)>0{fmt.Println("Recommended next actions:");for i,a:=range report.NextActions{fmt.Printf("  %d. %s\n",i+1,a)}}
 	}
 	if report.Status=="critical"{os.Exit(4)}
