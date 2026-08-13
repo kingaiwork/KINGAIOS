@@ -10,11 +10,12 @@ tmp=$(mktemp "$out_dir/.latest.XXXXXX")
 cleanup() { rm -f "$tmp"; }
 trap cleanup EXIT HUP INT TERM
 
-# A critical diagnostic intentionally exits non-zero. Preserve the report first;
-# the snapshot is the control-plane signal and must remain available to local
-# dashboards/agents even when the system is degraded or critical.
+# The periodic root-owned scan may execute only the compiled safe-auto
+# remediation allowlist. High-risk actions remain observe/approval/manual and
+# are never executed by this timer. A critical diagnostic intentionally exits
+# non-zero; preserve its structured report for the control plane regardless.
 set +e
-/usr/bin/kingai doctor --json >"$tmp"
+/usr/bin/kingai doctor --repair-safe --json >"$tmp"
 rc=$?
 set -e
 
@@ -27,6 +28,6 @@ mv -f "$tmp" "$out"
 trap - EXIT HUP INT TERM
 
 # Do not convert a diagnosed critical state into a failed systemd timer. The
-# structured report carries severity; execution policy can consume it without a
-# restart loop or destructive auto-remediation.
+# report carries severity, action IDs, remediation modes and any safe repairs;
+# policy-controlled agents can act on it without restart loops or escalation.
 exit 0
