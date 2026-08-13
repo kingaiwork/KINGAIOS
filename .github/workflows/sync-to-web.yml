@@ -1,0 +1,111 @@
+name: Sync KINGAIOS facts to private website
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'web/public/**'
+  release:
+    types: [published, edited, prereleased, released]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kingai-os-to-web-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require least-privilege target token
+        env:
+          SYNC_TOKEN: ${{ secrets.KINGAI_WEB_SYNC_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo '::error::Missing KINGAI_WEB_SYNC_TOKEN. Create a fine-grained token with Contents: Read and write access to kingaiwork/Kingaiosweb only.'
+            exit 1
+          fi
+
+      - name: Clone public OS source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh repo clone "$GITHUB_REPOSITORY" source -- --depth=1
+
+      - name: Clone private website target
+        env:
+          GH_TOKEN: ${{ secrets.KINGAI_WEB_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh repo clone kingaiwork/Kingaiosweb target -- --depth=1
+
+      - name: Build allowlisted website sync bundle
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          rm -rf target/sync/os
+          mkdir -p target/sync/os
+
+          files=(
+            VERSION
+            README.md
+            SECURITY.md
+            llms.txt
+            docs/STATUS.md
+            docs/INDEX.md
+            docs/ARCHITECTURE.md
+            docs/DESKTOP.md
+            docs/ROADMAP.md
+            docs/HEALTH-INTELLIGENCE.md
+            seo/GEO-KNOWLEDGE-GRAPH.md
+            release/gates.json
+          )
+
+          for file in "${files[@]}"; do
+            if [ -f "source/$file" ]; then
+              mkdir -p "target/sync/os/$(dirname "$file")"
+              cp "source/$file" "target/sync/os/$file"
+            fi
+          done
+
+          python3 - <<'PY'
+          import datetime, json, os
+          manifest = {
+              "schema": 1,
+              "direction": "KINGAIOS->Kingaiosweb",
+              "source_repo": os.environ["GITHUB_REPOSITORY"],
+              "source_sha": os.environ["SOURCE_SHA"],
+              "source_event": os.environ["SOURCE_EVENT"],
+              "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "policy": "allowlist-only",
+              "managed_path": "sync/os"
+          }
+          with open("target/sync/os/source.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Commit only synchronized OS facts
+        env:
+          GH_TOKEN: ${{ secrets.KINGAI_WEB_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target
+          git config user.name 'kingai-sync[bot]'
+          git config user.email '66586837+kingaiwork@users.noreply.github.com'
+          git add -- sync/os
+          if git diff --cached --quiet; then
+            echo 'No website sync changes.'
+            exit 0
+          fi
+          short_sha="${GITHUB_SHA:0:12}"
+          git commit -m "[sync-os] KINGAIOS ${short_sha}"
+          gh auth setup-git
+          git push origin HEAD:main
