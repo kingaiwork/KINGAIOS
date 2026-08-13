@@ -4,14 +4,14 @@
   "desktop_live_vm": true,
   "server_bios_uefi_vm": true,
   "ab_update_vm": false,
-  "recovery_vm": false,
+  "recovery_vm": true,
   "tuf_client": false,
-  "secure_boot_vm": false,
+  "secure_boot_vm": true,
   "tuf_repository": false,
   "production_signing_ready": false,
   "protected_branch": false,
   "rollback_drill": false,
-  "recovery_drill": false,
+  "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. A gate is changed to true only after the corresponding automated or operator-controlled verification has actually passed. Production keys and Cloudflare credentials are never represented by this file."
+  "notes": "Fail-closed. A gate is changed to true only after the corresponding automated or operator-controlled verification has actually passed. Recovery VM/offline recovery drill and Microsoft-enrolled OVMF Secure Boot VM are verified. Production keys and Cloudflare credentials are never represented by this file."
 }
