@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -56,4 +57,13 @@ func policyCmd(args []string){if len(args)<2||args[0]!="check"{usage();os.Exit(2
 
 func desktopCmd(args []string){if len(args)<1{usage();os.Exit(2)};switch args[0]{case"list":for _,e:=range desktop.List(){fmt.Printf("%s\t%s\n",e.ID,e.Name)};case"show":v,err:=desktop.Current();if err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)};if v==""{fmt.Println("unselected")}else{fmt.Println(v)};case"set":if len(args)!=2{usage();os.Exit(2)};if err:=desktop.Set(args[1],true);err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)};fmt.Printf("desktop experience set to %s\n",args[1]);case"apply":if err:=desktop.ApplyCurrent();err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(1)};fmt.Println("desktop experience applied");default:usage();os.Exit(2)}}
 
-func daemonJSON(method,path string,body any,out any)error{ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel();tr:=&http.Transport{DialContext:func(ctx context.Context,_,_ string)(net.Conn,error){return(&net.Dialer{}).DialContext(ctx,"unix","/run/kingai/kingaid.sock")}};defer tr.CloseIdleConnections();client:=&http.Client{Transport:tr,Timeout:2*time.Second};var reader io.Reader;if body!=nil{b,err:=json.Marshal(body);if err!=nil{return err};reader=bytes.NewReader(b)};req,err:=http.NewRequestWithContext(ctx,method,"http://kingai"+path,reader);if err!=nil{return err};if body!=nil{req.Header.Set("Content-Type","application/json")};resp,err:=client.Do(req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode>=300{return fmt.Errorf("daemon returned %s",resp.Status)};return json.NewDecoder(resp.Body).Decode(out)}
+func daemonJSON(method,path string,body any,out any)error{
+	ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);defer cancel()
+	socketPath:=os.Getenv("KINGAI_SOCKET");if socketPath==""{socketPath="/run/kingai/kingaid.sock"}
+	if !filepath.IsAbs(socketPath)||strings.ContainsAny(socketPath,"\x00\n\r"){return fmt.Errorf("KINGAI_SOCKET must be an absolute local unix-socket path")}
+	tr:=&http.Transport{DialContext:func(ctx context.Context,_,_ string)(net.Conn,error){return(&net.Dialer{}).DialContext(ctx,"unix",socketPath)}};defer tr.CloseIdleConnections()
+	client:=&http.Client{Transport:tr,Timeout:2*time.Second};var reader io.Reader
+	if body!=nil{b,err:=json.Marshal(body);if err!=nil{return err};reader=bytes.NewReader(b)}
+	req,err:=http.NewRequestWithContext(ctx,method,"http://kingai"+path,reader);if err!=nil{return err};if body!=nil{req.Header.Set("Content-Type","application/json")}
+	resp,err:=client.Do(req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode>=300{return fmt.Errorf("daemon returned %s",resp.Status)};return json.NewDecoder(resp.Body).Decode(out)
+}
