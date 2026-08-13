@@ -36,6 +36,8 @@ jobs:
     timeout-minutes: 95
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -95,6 +97,9 @@ jobs:
           if [[ "$channel" == stable ]]; then
             jq -e '.protected_branch==true and .rollback_drill==true and .recovery_drill==true and .r2_delivery==true' release/gates.json >/dev/null || { echo 'Stable governance/delivery gates incomplete' >&2; exit 1; }
           fi
+      - name: Reject stale verification evidence
+        shell: bash
+        run: bash scripts/check-release-gate-freshness.sh '${{ steps.params.outputs.channel }}' '${{ steps.params.outputs.profile }}'
       - name: QEMU BIOS boot verification
         shell: bash
         run: |
@@ -127,7 +132,7 @@ jobs:
           - Source commit: ${GITHUB_SHA}
           - BIOS and UEFI boot: verified in this workflow
           - SPDX 2.3 SBOM: included
-          - A/B, installer, Recovery and TUF gates: enforced by channel policy
+          - A/B, installer, Recovery and TUF gates: enforced by channel policy and commit-aware evidence freshness
           - Production signing secrets: never embedded in source
           EOF
           echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "title=$title" >> "$GITHUB_OUTPUT"
