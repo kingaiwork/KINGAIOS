@@ -35,11 +35,7 @@ jobs:
       - name: Install build installer and VM tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            mmdebstrap ubuntu-keyring zstd \
-            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
-            grub-efi-amd64-bin grub2-common \
-            qemu-utils qemu-system-x86 ovmf jq
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync grub-efi-amd64-bin grub2-common qemu-utils qemu-system-x86 ovmf jq
       - name: Build CI installer binary in user workspace
         run: |
           mkdir -p ci
@@ -51,13 +47,24 @@ jobs:
         run: |
           root=dist/rootfs-server-amd64
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
-          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage grub-editenv; do
-            sudo chroot "$root" sh -c "command -v $tool >/dev/null"
-          done
-      - name: Add installed-system readiness marker
+          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage grub-editenv; do sudo chroot "$root" sh -c "command -v $tool >/dev/null"; done
+      - name: Add installed-system readiness and health marker
         shell: bash
         run: |
           root=dist/rootfs-server-amd64
+          sudo tee "$root/usr/lib/kingai/kingai-installed-smoke" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          mountpoint -q /var/lib/kingai-state
+          test -e /dev/mapper/KINGAI_STATE
+          systemctl start kingai-health-scan.service
+          test -s /var/lib/kingai/health/latest.json
+          grep -Fq '"product": "KINGAI OS"' /var/lib/kingai/health/latest.json
+          grep -Eq '"status": "(healthy|degraded|critical)"' /var/lib/kingai/health/latest.json
+          echo KINGAI_HEALTH_SNAPSHOT_OK > /dev/ttyS0
+          echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0
+          EOF
+          sudo chmod 0755 "$root/usr/lib/kingai/kingai-installed-smoke"
           sudo tee "$root/usr/lib/systemd/system/kingai-installed-smoke.service" >/dev/null <<'EOF'
           [Unit]
           Description=KINGAI installed-system CI marker
@@ -66,14 +73,13 @@ jobs:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'mountpoint -q /var/lib/kingai-state && test -e /dev/mapper/KINGAI_STATE && echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0'
+          ExecStart=/usr/lib/kingai/kingai-installed-smoke
 
           [Install]
           WantedBy=multi-user.target
           EOF
           sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
-          sudo ln -sfn /usr/lib/systemd/system/kingai-installed-smoke.service \
-            "$root/etc/systemd/system/multi-user.target.wants/kingai-installed-smoke.service"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-installed-smoke.service "$root/etc/systemd/system/multi-user.target.wants/kingai-installed-smoke.service"
       - name: Create disposable NBD target
         shell: bash
         run: |
@@ -87,16 +93,7 @@ jobs:
       - name: Execute gated installer on disposable disk
         shell: bash
         run: |
-          sudo env \
-            KINGAI_INSTALLER_ALLOW_WRITE=1 \
-            KINGAI_INSTALLER_CI=1 \
-            KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
-            ./ci/kingai-installer execute \
-              --target /dev/nbd0 \
-              --profile server \
-              --source-root "$PWD/dist/rootfs-server-amd64" \
-              --state-key "$PWD/ci/state.key" \
-              --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
+          sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 KINGAI_INSTALLER_TEST_PERSIST_KEY=1 ./ci/kingai-installer execute --target /dev/nbd0 --profile server --source-root "$PWD/dist/rootfs-server-amd64" --state-key "$PWD/ci/state.key" --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
           jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' ci/install-result.json >/dev/null
       - name: Validate GPT A-B encrypted STATE and installed policy
         shell: bash
@@ -115,6 +112,8 @@ jobs:
           test -f ci/check-root/etc/kingai/state-test.key
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
           test -f ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
+          test -f ci/check-root/usr/lib/systemd/system/kingai-health-scan.service
+          test -f ci/check-root/usr/lib/systemd/system/kingai-health-scan.timer
           test "$(readlink ci/check-root/etc/systemd/system/local-fs-pre.target.wants/kingai-state-unlock-ci.service)" = '/usr/lib/systemd/system/kingai-state-unlock-ci.service'
           test "$(readlink ci/check-root/etc/systemd/system/casper-md5check.service)" = '/dev/null'
           test "$(readlink ci/check-root/etc/systemd/system/default.target)" = '/usr/lib/systemd/system/multi-user.target'
@@ -131,7 +130,7 @@ jobs:
         run: |
           sudo qemu-nbd --disconnect /dev/nbd0
           sudo udevadm settle
-      - name: Boot installed disk with UEFI and encrypted STATE
+      - name: Boot installed disk with UEFI encrypted STATE and health intelligence
         shell: bash
         run: |
           codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
@@ -139,25 +138,16 @@ jobs:
           test -f "$codefd" && test -f "$varsfd"
           cp "$varsfd" ci/OVMF_VARS.fd
           set +e
-          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
-            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
-            -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd \
-            -drive file=ci/installer-test.raw,format=raw,if=virtio \
-            -display none -serial stdio -no-reboot -snapshot > ci/qemu-installed.log 2>&1
+          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file="$codefd" -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd -drive file=ci/installer-test.raw,format=raw,if=virtio -display none -serial stdio -no-reboot -snapshot > ci/qemu-installed.log 2>&1
           code=$?
           set -e
           cat ci/qemu-installed.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_HEALTH_SNAPSHOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_INSTALLED_BOOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed.log
-          if grep -Fq 'grub>' ci/qemu-installed.log; then
-            echo 'Installed disk dropped to GRUB prompt.' >&2
-            exit 1
-          fi
-          if grep -Eiq 'Failed to start.*casper|casper-md5check.+failed' ci/qemu-installed.log; then
-            echo 'Installed system attempted to run a Live-only Casper service.' >&2
-            exit 1
-          fi
+          if grep -Fq 'grub>' ci/qemu-installed.log; then echo 'Installed disk dropped to GRUB prompt.' >&2; exit 1; fi
+          if grep -Eiq 'Failed to start.*casper|casper-md5check.+failed' ci/qemu-installed.log; then echo 'Installed system attempted to run a Live-only Casper service.' >&2; exit 1; fi
       - name: Cleanup NBD
         if: always()
         run: |
