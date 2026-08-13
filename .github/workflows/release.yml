@@ -121,10 +121,21 @@ jobs:
         id: release
         shell: bash
         run: |
-          version=$(tr -d '[:space:]' < VERSION); profile='${{ steps.params.outputs.profile }}'; channel='${{ steps.params.outputs.channel }}'; base_version="${version%-$channel}"
-          tag="v${base_version}-${profile}-${channel}.${GITHUB_RUN_NUMBER}"; title="KINGAI OS ${base_version} ${profile^} ${channel^} Preview"
+          version=$(tr -d '[:space:]' < VERSION)
+          profile='${{ steps.params.outputs.profile }}'
+          channel='${{ steps.params.outputs.channel }}'
+          base_version="${version%-$channel}"
+          if [[ "$channel" == stable ]]; then
+            tag="v${base_version}-${profile}"
+            title="KINGAI OS ${base_version} ${profile^}"
+            heading="KINGAI OS ${base_version} — ${profile^} Stable"
+          else
+            tag="v${base_version}-${profile}-${channel}.${GITHUB_RUN_NUMBER}"
+            title="KINGAI OS ${base_version} ${profile^} ${channel^} Preview"
+            heading="KINGAI OS ${base_version} — ${profile^} ${channel^} Preview"
+          fi
           cat > release-notes.md <<EOF
-          # KINGAI OS ${base_version} — ${profile^} ${channel^} Preview
+          # ${heading}
 
           - Profile: ${profile}
           - Architecture: amd64
@@ -135,12 +146,16 @@ jobs:
           - A/B, installer, Recovery and TUF gates: enforced by channel policy and commit-aware evidence freshness
           - Production signing secrets: never embedded in source
           EOF
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "title=$title" >> "$GITHUB_OUTPUT"
-      - name: Publish small ISO to GitHub Pre-release
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+      - name: Publish small ISO to GitHub Release
         if: steps.artifact.outputs.large == 'false'
         shell: bash
         run: |
-          gh release create '${{ steps.release.outputs.tag }}' --target "$GITHUB_SHA" --title '${{ steps.release.outputs.title }}' --notes-file release-notes.md --prerelease '${{ steps.artifact.outputs.iso }}' '${{ steps.artifact.outputs.iso }}.sha256' '${{ steps.artifact.outputs.manifest }}' '${{ steps.artifact.outputs.sbom }}'
+          args=(release create '${{ steps.release.outputs.tag }}' --target "$GITHUB_SHA" --title '${{ steps.release.outputs.title }}' --notes-file release-notes.md)
+          if [[ '${{ steps.params.outputs.channel }}' != stable ]]; then args+=(--prerelease); fi
+          args+=('${{ steps.artifact.outputs.iso }}' '${{ steps.artifact.outputs.iso }}.sha256' '${{ steps.artifact.outputs.manifest }}' '${{ steps.artifact.outputs.sbom }}')
+          gh "${args[@]}"
       - name: Validate Wrangler R2 environment for large ISO
         if: steps.artifact.outputs.large == 'true'
         shell: bash
@@ -154,7 +169,7 @@ jobs:
         env:
           R2_PREFIX: ${{ steps.params.outputs.channel }}
         run: bash scripts/publish-artifact.sh '${{ steps.artifact.outputs.iso }}'
-      - name: Create metadata-only GitHub Pre-release for R2 image
+      - name: Create metadata-only GitHub Release for R2 image
         if: steps.artifact.outputs.large == 'true'
         shell: bash
         run: |
@@ -162,4 +177,7 @@ jobs:
 
           The ISO exceeds GitHub's single-asset route and was published to the KINGAI R2 release store via pinned Wrangler v4 remote object uploads. Public delivery is intended through os.kingai.work.
           EOF
-          gh release create '${{ steps.release.outputs.tag }}' --target "$GITHUB_SHA" --title '${{ steps.release.outputs.title }}' --notes-file release-notes.md --prerelease '${{ steps.artifact.outputs.iso }}.sha256' '${{ steps.artifact.outputs.manifest }}' '${{ steps.artifact.outputs.sbom }}'
+          args=(release create '${{ steps.release.outputs.tag }}' --target "$GITHUB_SHA" --title '${{ steps.release.outputs.title }}' --notes-file release-notes.md)
+          if [[ '${{ steps.params.outputs.channel }}' != stable ]]; then args+=(--prerelease); fi
+          args+=('${{ steps.artifact.outputs.iso }}.sha256' '${{ steps.artifact.outputs.manifest }}' '${{ steps.artifact.outputs.sbom }}')
+          gh "${args[@]}"
