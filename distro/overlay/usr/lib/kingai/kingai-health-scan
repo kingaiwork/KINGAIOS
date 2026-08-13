@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+out_dir=/var/lib/kingai/health
+out="$out_dir/latest.json"
+mkdir -p "$out_dir"
+chmod 0755 "$out_dir"
+
+tmp=$(mktemp "$out_dir/.latest.XXXXXX")
+cleanup() { rm -f "$tmp"; }
+trap cleanup EXIT HUP INT TERM
+
+# A critical diagnostic intentionally exits non-zero. Preserve the report first;
+# the snapshot is the control-plane signal and must remain available to local
+# dashboards/agents even when the system is degraded or critical.
+set +e
+/usr/bin/kingai doctor --json >"$tmp"
+rc=$?
+set -e
+
+if [ ! -s "$tmp" ]; then
+  echo "KINGAI health scan produced no report (doctor rc=$rc)" >&2
+  exit 1
+fi
+chmod 0644 "$tmp"
+mv -f "$tmp" "$out"
+trap - EXIT HUP INT TERM
+
+# Do not convert a diagnosed critical state into a failed systemd timer. The
+# structured report carries severity; execution policy can consume it without a
+# restart loop or destructive auto-remediation.
+exit 0
