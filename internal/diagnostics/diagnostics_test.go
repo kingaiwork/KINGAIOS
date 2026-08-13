@@ -1,12 +1,17 @@
 package diagnostics
 
 import (
+	"crypto"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sigstore/sigstore/pkg/signature"
+	"github.com/theupdateframework/go-tuf/v2/metadata"
 
 	kingupdate "github.com/kingaiwork/KINGAIOS/internal/update"
 )
@@ -16,6 +21,22 @@ func writeTestFile(t *testing.T, root, path string, data []byte) {
 	p := rooted(root, path)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(p, data, 0o644); err != nil { t.Fatal(err) }
+}
+
+func signedRoot(t *testing.T, expires time.Time) []byte {
+	t.Helper()
+	root := metadata.Root(expires.UTC())
+	_, private, err := ed25519.GenerateKey(nil)
+	if err != nil { t.Fatal(err) }
+	key, err := metadata.KeyFromPublicKey(private.Public())
+	if err != nil { t.Fatal(err) }
+	if err := root.Signed.AddKey(key, metadata.ROOT); err != nil { t.Fatal(err) }
+	signer, err := signature.LoadSigner(private, crypto.Hash(0))
+	if err != nil { t.Fatal(err) }
+	if _, err := root.Sign(signer); err != nil { t.Fatal(err) }
+	b, err := root.ToBytes(false)
+	if err != nil { t.Fatal(err) }
+	return b
 }
 
 func healthyRoot(t *testing.T) string {
@@ -29,7 +50,7 @@ func healthyRoot(t *testing.T) string {
 	if err != nil { t.Fatal(err) }
 	b, _ := json.Marshal(state)
 	writeTestFile(t, root, kingupdate.DefaultStatePath, b)
-	writeTestFile(t, root, "/etc/kingai/update/root.json", []byte(`{"signed":{"_type":"root"}}`))
+	writeTestFile(t, root, "/etc/kingai/update/root.json", signedRoot(t, time.Now().UTC().Add(365*24*time.Hour)))
 	writeTestFile(t, root, "/sys/firmware/efi/efivars/SecureBoot-test", []byte{0, 0, 0, 0, 1})
 	return root
 }
@@ -67,4 +88,42 @@ func TestPendingUpdateIsDegradedNotCritical(t *testing.T) {
 	found := false
 	for _, c := range r.Checks { if c.ID == "ab-state" && c.Status == "warn" { found = true } }
 	if !found { t.Fatal("missing A/B pending warning") }
+}
+
+func TestTamperedTUFRootMakesReportCritical(t *testing.T) {
+	root := healthyRoot(t)
+	path := rooted(root, "/etc/kingai/update/root.json")
+	b, err := os.ReadFile(path); if err != nil { t.Fatal(err) }
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil { t.Fatal(err) }
+	signed := doc["signed"].(map[string]any)
+	signed["version"] = float64(99)
+	tampered, _ := json.Marshal(doc)
+	if err := os.WriteFile(path, tampered, 0o644); err != nil { t.Fatal(err) }
+	r := Run(Options{Root: root})
+	if r.Status != "critical" { t.Fatalf("tampered trust root must be critical: %+v", r.Checks) }
+	found := false
+	for _, c := range r.Checks { if c.ID == "tuf-root" && c.Status == "fail" && c.Severity == "critical" { found = true } }
+	if !found { t.Fatal("tampered TUF root was not identified as a critical failure") }
+}
+
+func TestWritableTUFRootMakesReportCritical(t *testing.T) {
+	root := healthyRoot(t)
+	path := rooted(root, "/etc/kingai/update/root.json")
+	if err := os.Chmod(path, 0o666); err != nil { t.Fatal(err) }
+	r := Run(Options{Root: root})
+	if r.Status != "critical" { t.Fatalf("writable trust root must be critical: %+v", r.Checks) }
+}
+
+func TestExpiredSignedTUFRootIsDegradedWithRotationAdvice(t *testing.T) {
+	root := healthyRoot(t)
+	now := time.Now().UTC()
+	writeTestFile(t, root, "/etc/kingai/update/root.json", signedRoot(t, now.Add(-time.Hour)))
+	r := Run(Options{Root: root, Now: func() time.Time { return now }})
+	if r.Status != "degraded" { t.Fatalf("expired but signature-valid root should be degraded, got %s", r.Status) }
+	found := false
+	for _, c := range r.Checks {
+		if c.ID == "tuf-root" && c.Status == "warn" && c.Recommendation != "" { found = true }
+	}
+	if !found { t.Fatal("expired TUF root warning/rotation guidance missing") }
 }
