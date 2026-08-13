@@ -27,13 +27,13 @@ type SlotState struct {
 }
 
 type StagePlan struct {
-	FromSlot      Slot   `json:"from_slot"`
-	TargetSlot    Slot   `json:"target_slot"`
+	FromSlot       Slot   `json:"from_slot"`
+	TargetSlot     Slot   `json:"target_slot"`
 	CurrentVersion string `json:"current_version"`
-	TargetVersion string `json:"target_version"`
-	Destructive   bool   `json:"destructive"`
-	Executable    bool   `json:"executable"`
-	Reason        string `json:"reason"`
+	TargetVersion  string `json:"target_version"`
+	Destructive    bool   `json:"destructive"`
+	Executable     bool   `json:"executable"`
+	Reason         string `json:"reason"`
 }
 
 func NewSlotState(active Slot, version string) (SlotState, error) {
@@ -44,14 +44,18 @@ func NewSlotState(active Slot, version string) (SlotState, error) {
 		return SlotState{}, errors.New("active version is required")
 	}
 	return SlotState{
-		ActiveSlot: active,
-		ActiveVersion: version,
+		ActiveSlot:      active,
+		ActiveVersion:   version,
 		MaxBootAttempts: 3,
-		Confirmed: true,
-		UpdatedAt: time.Now().UTC(),
+		Confirmed:       true,
+		UpdatedAt:       time.Now().UTC(),
 	}, nil
 }
 
+// Validate is the canonical fail-closed state invariant check. A state without
+// a pending slot must describe a fully confirmed, idle control plane. A state
+// with a pending slot must retain the previous confirmed slot and cannot claim
+// confirmation until userspace health reconciliation succeeds.
 func (s SlotState) Validate() error {
 	if !validSlot(s.ActiveSlot) {
 		return errors.New("invalid active slot")
@@ -62,19 +66,43 @@ func (s SlotState) Validate() error {
 	if s.MaxBootAttempts <= 0 || s.MaxBootAttempts > 10 {
 		return errors.New("max boot attempts must be between 1 and 10")
 	}
-	if s.PendingSlot != "" {
-		if !validSlot(s.PendingSlot) {
-			return errors.New("invalid pending slot")
-		}
-		if s.PendingSlot == s.ActiveSlot {
-			return errors.New("pending slot must be inactive")
-		}
-		if s.PendingVersion == "" {
-			return errors.New("pending version is required when a pending slot exists")
-		}
-	}
 	if s.BootAttempts < 0 || s.BootAttempts > s.MaxBootAttempts {
 		return errors.New("boot attempt counter is outside policy")
+	}
+
+	if s.PendingSlot == "" {
+		if s.PendingVersion != "" {
+			return errors.New("pending version cannot exist without a pending slot")
+		}
+		if s.BootAttempts != 0 {
+			return errors.New("boot attempts must be zero when no update is pending")
+		}
+		if s.RollbackRequired {
+			return errors.New("rollback cannot be required when no update is pending")
+		}
+		if !s.Confirmed {
+			return errors.New("idle A/B state must be confirmed")
+		}
+		if s.PreviousSlot != "" && !validSlot(s.PreviousSlot) {
+			return errors.New("invalid previous slot")
+		}
+		return nil
+	}
+
+	if !validSlot(s.PendingSlot) {
+		return errors.New("invalid pending slot")
+	}
+	if s.PendingSlot == s.ActiveSlot {
+		return errors.New("pending slot must be inactive")
+	}
+	if s.PendingVersion == "" {
+		return errors.New("pending version is required when a pending slot exists")
+	}
+	if s.Confirmed {
+		return errors.New("pending update cannot already be confirmed")
+	}
+	if !validSlot(s.PreviousSlot) || s.PreviousSlot != s.ActiveSlot {
+		return errors.New("pending update must retain the current active slot as previous slot")
 	}
 	return nil
 }
@@ -93,13 +121,13 @@ func (s SlotState) PlanStage(targetVersion string) (StagePlan, error) {
 		return StagePlan{}, errors.New("target version equals active version")
 	}
 	return StagePlan{
-		FromSlot: s.ActiveSlot,
-		TargetSlot: otherSlot(s.ActiveSlot),
+		FromSlot:       s.ActiveSlot,
+		TargetSlot:     otherSlot(s.ActiveSlot),
 		CurrentVersion: s.ActiveVersion,
-		TargetVersion: targetVersion,
-		Destructive: true,
-		Executable: false,
-		Reason: "planning-only: artifact verification, inactive-slot write, bootloader transaction and recovery checks are still required",
+		TargetVersion:  targetVersion,
+		Destructive:    true,
+		Executable:     false,
+		Reason:         "plan requires verified source, explicit write enable, exact-disk confirmation and recovery-capable boot transaction before execution",
 	}, nil
 }
 
@@ -115,6 +143,9 @@ func (s SlotState) MarkPending(targetVersion string) (SlotState, error) {
 	s.Confirmed = false
 	s.RollbackRequired = false
 	s.UpdatedAt = time.Now().UTC()
+	if err := s.Validate(); err != nil {
+		return SlotState{}, err
+	}
 	return s, nil
 }
 
@@ -124,9 +155,6 @@ func (s SlotState) RecordBootAttempt() (SlotState, error) {
 	}
 	if s.PendingSlot == "" {
 		return SlotState{}, errors.New("no pending update")
-	}
-	if s.Confirmed {
-		return SlotState{}, errors.New("pending update is already confirmed")
 	}
 	if s.BootAttempts >= s.MaxBootAttempts {
 		s.RollbackRequired = true
@@ -158,6 +186,9 @@ func (s SlotState) ConfirmPending() (SlotState, error) {
 	s.Confirmed = true
 	s.RollbackRequired = false
 	s.UpdatedAt = time.Now().UTC()
+	if err := s.Validate(); err != nil {
+		return SlotState{}, err
+	}
 	return s, nil
 }
 
@@ -171,16 +202,26 @@ func (s SlotState) Rollback() (SlotState, error) {
 	if !validSlot(s.PreviousSlot) {
 		return SlotState{}, fmt.Errorf("invalid previous slot %q", s.PreviousSlot)
 	}
-	// Until bootloader integration exists, rollback state deliberately records
-	// intent only. It never claims a disk/firmware transaction occurred.
+	// The boot controller has already returned execution to the last confirmed
+	// active slot before this state transition is persisted. Rollback therefore
+	// clears only pending transaction state; ActiveSlot intentionally remains the
+	// previously confirmed slot.
 	s.PendingSlot = ""
 	s.PendingVersion = ""
 	s.BootAttempts = 0
 	s.Confirmed = true
 	s.RollbackRequired = false
 	s.UpdatedAt = time.Now().UTC()
+	if err := s.Validate(); err != nil {
+		return SlotState{}, err
+	}
 	return s, nil
 }
 
 func validSlot(s Slot) bool { return s == SlotA || s == SlotB }
-func otherSlot(s Slot) Slot { if s == SlotA { return SlotB }; return SlotA }
+func otherSlot(s Slot) Slot {
+	if s == SlotA {
+		return SlotB
+	}
+	return SlotA
+}
