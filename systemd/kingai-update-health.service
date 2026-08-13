@@ -7,6 +7,8 @@ ConditionPathExists=/var/lib/kingai-state/kingai/update/slots.json
 [Service]
 Type=oneshot
 ExecStart=/usr/lib/kingai/kingai-update boot-health
+StandardOutput=journal+console
+StandardError=journal+console
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
