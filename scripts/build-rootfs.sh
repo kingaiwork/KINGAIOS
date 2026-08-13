@@ -50,4 +50,4 @@ if [[ "$ARCH" == "amd64" && "$PROFILE" != "iot" ]]; then
   for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-editenv findmnt blkid; do chroot "$ROOT" sh -c "command -v $tool >/dev/null" || { echo "installer/update runtime missing: $tool" >&2; exit 1; }; done
 fi
 if [[ "${KINGAI_SKIP_ARCHIVE:-0}" == "1" ]];then echo "Built rootfs directory: $ROOT";exit 0;fi
-ARTIFACT="$OUT/KINGAI-OS-${profile:-$PROFILE}-${ARCH}-rootfs.tar.zst";tar --numeric-owner --xattrs --acls -C "$ROOT" -I 'zstd -19 -T0' -cf "$ARTIFACT" .;sha256sum "$ARTIFACT">"$ARTIFACT.sha256";cp "$ROOT/usr/share/kingai/legal/KINGAI-OS.spdx.json" "$ARTIFACT.spdx.json";echo "Built $ARTIFACT"
+ARTIFACT="$OUT/KINGAI-OS-${PROFILE}-${ARCH}-rootfs.tar.zst";tar --numeric-owner --xattrs --acls -C "$ROOT" -I 'zstd -19 -T0' -cf "$ARTIFACT" .;sha256sum "$ARTIFACT">"$ARTIFACT.sha256";cp "$ROOT/usr/share/kingai/legal/KINGAI-OS.spdx.json" "$ARTIFACT.spdx.json";echo "Built $ARTIFACT"
