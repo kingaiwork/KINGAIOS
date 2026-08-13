@@ -5,8 +5,12 @@ on:
     branches: [main]
     paths:
       - 'cmd/kingai-recovery/**'
+      - 'cmd/kingai-installer/**'
+      - 'cmd/kingai-update/**'
       - 'internal/recovery/**'
       - 'internal/update/**'
+      - 'internal/installer/**'
+      - 'systemd/kingai-update-health.service'
       - 'distro/packages/recovery.txt'
       - 'scripts/build-rootfs.sh'
       - 'scripts/build-live-iso.sh'
