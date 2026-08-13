@@ -1,0 +1,6 @@
+gdisk
+parted
+dosfstools
+e2fsprogs
+cryptsetup
+rsync
