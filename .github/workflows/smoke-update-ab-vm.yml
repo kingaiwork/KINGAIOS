@@ -57,6 +57,22 @@ jobs:
         run: |
           sudo cp -a dist/rootfs-server-amd64 ci/root-v2
           sudo sed -i 's/^VERSION_ID=.*/VERSION_ID="0.1.1-ci"/' ci/root-v2/usr/lib/os-release
+          sudo tee ci/root-v2/usr/lib/kingai/kingai-ab-ci-marker >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          state=/var/lib/kingai-state/kingai/update/slots.json
+          echo KINGAI_POST_HEALTH_STATE_BEGIN > /dev/ttyS0
+          cat "$state" > /dev/ttyS0
+          echo KINGAI_POST_HEALTH_STATE_END > /dev/ttyS0
+          grep -Fq '"active_slot": "B"' "$state"
+          if grep -Fq '"pending_slot"' "$state"; then
+            echo KINGAI_UNEXPECTED_PENDING_AFTER_HEALTH > /dev/ttyS0
+            exit 1
+          fi
+          echo KINGAI_SLOT_B_CONFIRMED > /dev/ttyS0
+          systemctl --no-block poweroff
+          EOF
+          sudo chmod 0755 ci/root-v2/usr/lib/kingai/kingai-ab-ci-marker
           sudo tee ci/root-v2/usr/lib/systemd/system/kingai-ab-ci-marker.service >/dev/null <<'EOF'
           [Unit]
           Description=KINGAI A-B CI success marker
@@ -64,7 +80,7 @@ jobs:
           Requires=kingai-update-health.service
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'grep -q "\"active_slot\": \"B\"" /var/lib/kingai-state/kingai/update/slots.json && ! grep -q "\"pending_slot\"" /var/lib/kingai-state/kingai/update/slots.json && echo KINGAI_SLOT_B_CONFIRMED > /dev/ttyS0 && systemctl --no-block poweroff'
+          ExecStart=/usr/lib/kingai/kingai-ab-ci-marker
           [Install]
           WantedBy=multi-user.target
           EOF
@@ -89,6 +105,8 @@ jobs:
           timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=ci/OVMF_VARS-v2.fd -drive file=ci/update-test.raw,format=raw,if=virtio -display none -serial stdio -no-reboot > ci/qemu-v2.log 2>&1
           code=$?; set -e; cat ci/qemu-v2.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI A/B health: update-confirmed' ci/qemu-v2.log
+          grep -Fq 'KINGAI_POST_HEALTH_STATE_BEGIN' ci/qemu-v2.log
           grep -Fq 'KINGAI_SLOT_B_CONFIRMED' ci/qemu-v2.log
       - name: Verify B confirmed then stage intentionally unhealthy A
         shell: bash
