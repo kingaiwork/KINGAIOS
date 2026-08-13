@@ -64,7 +64,7 @@ jobs:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'mountpoint -q /var/lib/kingai-state && echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0'
+          ExecStart=/bin/sh -c 'mountpoint -q /var/lib/kingai-state && test -e /dev/mapper/KINGAI_STATE && echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0'
 
           [Install]
           WantedBy=multi-user.target
@@ -96,7 +96,7 @@ jobs:
               --state-key "$PWD/ci/state.key" \
               --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
           jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' ci/install-result.json >/dev/null
-      - name: Validate GPT A-B and encrypted STATE
+      - name: Validate GPT A-B encrypted STATE and installed policy
         shell: bash
         run: |
           sudo udevadm settle
@@ -112,6 +112,10 @@ jobs:
           grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
           test -f ci/check-root/etc/kingai/state-test.key
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
+          test -f ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
+          test "$(readlink ci/check-root/etc/systemd/system/local-fs-pre.target.wants/kingai-state-unlock-ci.service)" = '/usr/lib/systemd/system/kingai-state-unlock-ci.service'
+          test "$(readlink ci/check-root/etc/systemd/system/casper-md5check.service)" = '/dev/null'
+          test "$(readlink ci/check-root/etc/systemd/system/default.target)" = '/usr/lib/systemd/system/multi-user.target'
           test -f ci/check-root/boot/grub/grub.cfg
           test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
           test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
@@ -121,7 +125,7 @@ jobs:
         run: |
           sudo qemu-nbd --disconnect /dev/nbd0
           sudo udevadm settle
-      - name: Boot installed disk with UEFI
+      - name: Boot installed disk with UEFI and encrypted STATE
         shell: bash
         run: |
           codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
@@ -142,6 +146,10 @@ jobs:
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed.log
           if grep -Fq 'grub>' ci/qemu-installed.log; then
             echo 'Installed disk dropped to GRUB prompt.' >&2
+            exit 1
+          fi
+          if grep -Eiq 'Failed to start.*casper|casper-md5check.+failed' ci/qemu-installed.log; then
+            echo 'Installed system attempted to run a Live-only Casper service.' >&2
             exit 1
           fi
       - name: Cleanup NBD
