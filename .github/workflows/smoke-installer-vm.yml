@@ -34,8 +34,20 @@ jobs:
             gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
             grub-efi-amd64-bin grub2-common \
             qemu-utils qemu-system-x86 ovmf jq
+      - name: Build CI installer binary in user workspace
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+          test -x ci/kingai-installer
       - name: Build installable KINGAI Server root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Verify root filesystem ownership and installer runtime
+        run: |
+          root=dist/rootfs-server-amd64
+          test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install; do
+            sudo chroot "$root" sh -c "command -v $tool >/dev/null"
+          done
       - name: Add installed-system readiness marker
         shell: bash
         run: |
@@ -56,18 +68,16 @@ jobs:
           sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
           sudo ln -sfn /usr/lib/systemd/system/kingai-installed-smoke.service \
             "$root/etc/systemd/system/multi-user.target.wants/kingai-installed-smoke.service"
-      - name: Build installer binary
-        run: go build -trimpath -o dist/kingai-installer ./cmd/kingai-installer
       - name: Create disposable NBD target
         shell: bash
         run: |
-          truncate -s 26G dist/installer-test.raw
+          truncate -s 26G ci/installer-test.raw
           sudo modprobe nbd max_part=16
-          sudo qemu-nbd --connect=/dev/nbd0 --format=raw dist/installer-test.raw
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/installer-test.raw
           sudo udevadm settle
           test "$(lsblk -dn -o TYPE /dev/nbd0)" = disk
-          head -c 64 /dev/urandom > dist/state.key
-          chmod 600 dist/state.key
+          head -c 64 /dev/urandom > ci/state.key
+          chmod 600 ci/state.key
       - name: Execute gated installer on disposable disk
         shell: bash
         run: |
@@ -75,13 +85,13 @@ jobs:
             KINGAI_INSTALLER_ALLOW_WRITE=1 \
             KINGAI_INSTALLER_CI=1 \
             KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
-            ./dist/kingai-installer execute \
+            ./ci/kingai-installer execute \
               --target /dev/nbd0 \
               --profile server \
               --source-root "$PWD/dist/rootfs-server-amd64" \
-              --state-key "$PWD/dist/state.key" \
-              --confirm ERASE:/dev/nbd0 | tee dist/install-result.json
-          jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' dist/install-result.json >/dev/null
+              --state-key "$PWD/ci/state.key" \
+              --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
+          jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' ci/install-result.json >/dev/null
       - name: Validate GPT A-B and encrypted STATE
         shell: bash
         run: |
@@ -91,17 +101,17 @@ jobs:
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
           sudo cryptsetup isLuks /dev/nbd0p4
-          mkdir -p dist/check-root dist/check-efi
-          sudo mount /dev/nbd0p2 dist/check-root
-          sudo mount /dev/nbd0p1 dist/check-efi
-          grep -q '^NAME="KINGAI OS"' dist/check-root/usr/lib/os-release
-          grep -q 'KINGAI_STATE' dist/check-root/etc/crypttab
-          test -f dist/check-root/etc/kingai/state-test.key
-          test "$(sudo stat -c '%a' dist/check-root/etc/kingai/state-test.key)" = 600
-          test -f dist/check-root/boot/grub/grub.cfg
-          test -f dist/check-efi/EFI/BOOT/BOOTX64.EFI
-          sudo umount dist/check-efi
-          sudo umount dist/check-root
+          mkdir -p ci/check-root ci/check-efi
+          sudo mount /dev/nbd0p2 ci/check-root
+          sudo mount /dev/nbd0p1 ci/check-efi
+          grep -q '^NAME="KINGAI OS"' ci/check-root/usr/lib/os-release
+          grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
+          test -f ci/check-root/etc/kingai/state-test.key
+          test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
+          test -f ci/check-root/boot/grub/grub.cfg
+          test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
+          sudo umount ci/check-efi
+          sudo umount ci/check-root
       - name: Disconnect installer target
         run: |
           sudo qemu-nbd --disconnect /dev/nbd0
@@ -112,22 +122,22 @@ jobs:
           codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
           varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
           test -f "$codefd" && test -f "$varsfd"
-          cp "$varsfd" dist/OVMF_VARS.fd
+          cp "$varsfd" ci/OVMF_VARS.fd
           set +e
           timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
             -drive if=pflash,format=raw,readonly=on,file="$codefd" \
-            -drive if=pflash,format=raw,file=dist/OVMF_VARS.fd \
-            -drive file=dist/installer-test.raw,format=raw,if=virtio \
-            -display none -serial stdio -no-reboot -snapshot > dist/qemu-installed.log 2>&1
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd \
+            -drive file=ci/installer-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot -snapshot > ci/qemu-installed.log 2>&1
           code=$?
           set -e
-          cat dist/qemu-installed.log
+          cat ci/qemu-installed.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
-          grep -Fq 'KINGAI_INSTALLED_BOOT_OK' dist/qemu-installed.log
-          grep -Fq 'KINGAI OS 0.1 Developer Foundation' dist/qemu-installed.log
+          grep -Fq 'KINGAI_INSTALLED_BOOT_OK' ci/qemu-installed.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed.log
       - name: Cleanup NBD
         if: always()
         run: |
-          mount | awk '$3 ~ /check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
+          mount | awk '$3 ~ /ci\/check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
           sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
           sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
