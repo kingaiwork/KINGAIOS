@@ -149,6 +149,38 @@ func newestBootFile(root, pattern string) (string, error) {
 	if err != nil { return "", err }
 	if len(matches) == 0 { return "", fmt.Errorf("no boot file matches %s", pattern) }
 	best := matches[0]
-	for _, p := range matches[1:] { if p > best { best = p } }
+	for _, p := range matches[1:] {
+		if naturalCompare(filepath.Base(p), filepath.Base(best)) > 0 { best = p }
+	}
 	return best, nil
+}
+
+// naturalCompare orders boot artifact names by numeric runs instead of plain
+// lexicographic bytes. This prevents 6.9 from sorting newer than 6.11 and also
+// handles package revisions such as -10 versus -9 without invoking external
+// tools during boot configuration.
+func naturalCompare(a, b string) int {
+	for ia, ib := 0, 0; ia < len(a) || ib < len(b); {
+		if ia >= len(a) { return -1 }
+		if ib >= len(b) { return 1 }
+		ad, bd := a[ia] >= '0' && a[ia] <= '9', b[ib] >= '0' && b[ib] <= '9'
+		if ad && bd {
+			ja, jb := ia, ib
+			for ja < len(a) && a[ja] >= '0' && a[ja] <= '9' { ja++ }
+			for jb < len(b) && b[jb] >= '0' && b[jb] <= '9' { jb++ }
+			ra, rb := strings.TrimLeft(a[ia:ja], "0"), strings.TrimLeft(b[ib:jb], "0")
+			if ra == "" { ra = "0" }; if rb == "" { rb = "0" }
+			if len(ra) < len(rb) { return -1 }; if len(ra) > len(rb) { return 1 }
+			if ra < rb { return -1 }; if ra > rb { return 1 }
+			// Numerically equal: prefer the longer zero-padded token only as a
+			// deterministic tie-breaker, then continue comparing the suffix.
+			if ja-ia < jb-ib { return -1 }; if ja-ia > jb-ib { return 1 }
+			ia, ib = ja, jb
+			continue
+		}
+		ca, cb := a[ia], b[ib]
+		if ca < cb { return -1 }; if ca > cb { return 1 }
+		ia++; ib++
+	}
+	return 0
 }
