@@ -61,8 +61,8 @@ func TestPendingUpdateIsDegradedNotCritical(t *testing.T) {
 	b, _ := json.Marshal(state)
 	writeTestFile(t, root, kingupdate.DefaultStatePath, b)
 	r := Run(Options{Root: root})
-	if r.Status != "healthy" || r.Score != 92 {
-		t.Fatalf("pending update should be visible but non-critical: status=%s score=%d", r.Status, r.Score)
+	if r.Status != "degraded" || r.Score != 92 {
+		t.Fatalf("pending update should be visible and degraded but non-critical: status=%s score=%d", r.Status, r.Score)
 	}
 	found := false
 	for _, c := range r.Checks { if c.ID == "ab-state" && c.Status == "warn" { found = true } }
