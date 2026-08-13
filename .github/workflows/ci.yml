@@ -50,6 +50,8 @@ jobs:
               if key not in {'schema', 'notes'}:
                   assert isinstance(value, bool), (key, value)
           PY
+      - name: Test commit-aware release evidence freshness
+        run: bash scripts/test-release-gate-freshness.sh
       - name: Check required files
         run: |
           test -f README.md
@@ -69,6 +71,8 @@ jobs:
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
           test -f scripts/build-iot-image.sh
+          test -f scripts/check-release-gate-freshness.sh
+          test -f scripts/test-release-gate-freshness.sh
           test -f update/README.md
           test -f installer/README.md
           test -f iot/README.md
