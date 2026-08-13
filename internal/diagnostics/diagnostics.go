@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -90,12 +89,12 @@ func (r *Report) finalize() {
 	for _, c := range r.Checks {
 		if c.Status == "fail" && c.Severity == "critical" { criticalFailure = true }
 		if c.Recommendation != "" && (c.Status == "warn" || c.Status == "fail") {
+			// Checks are added in control-plane priority order, so this remains
+			// deterministic without a heuristic sort that could reorder equal risks.
 			r.NextActions = append(r.NextActions, c.Recommendation)
 		}
 	}
 	if criticalFailure || r.Score < 60 { r.Status = "critical" } else if r.Score < 90 { r.Status = "degraded" } else { r.Status = "healthy" }
-	// Make output stable for machines and humans while keeping critical actions first.
-	sort.SliceStable(r.NextActions, func(i, j int) bool { return strings.Contains(strings.ToLower(r.NextActions[i]), "before allowing") })
 }
 
 func checkJSON(path, id string) Check {
