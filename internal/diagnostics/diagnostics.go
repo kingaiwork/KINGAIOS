@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kingaiwork/KINGAIOS/internal/tufclient"
 	kingupdate "github.com/kingaiwork/KINGAIOS/internal/update"
 )
 
@@ -39,7 +40,8 @@ type Options struct {
 func Run(opts Options) Report {
 	now := time.Now
 	if opts.Now != nil { now = opts.Now }
-	r := Report{Schema: 1, Product: "KINGAI OS", GeneratedAt: now().UTC(), Score: 100}
+	referenceTime := now().UTC()
+	r := Report{Schema: 1, Product: "KINGAI OS", GeneratedAt: referenceTime, Score: 100}
 
 	if opts.DaemonError != nil {
 		r.add(Check{ID: "daemon", Status: "fail", Severity: "critical", Summary: "kingaid is not reachable: " + opts.DaemonError.Error(), Recommendation: "Inspect systemctl status kingaid and journalctl -u kingaid before allowing autonomous execution."})
@@ -66,7 +68,7 @@ func Run(opts Options) Report {
 	}
 
 	r.add(checkABState(rooted(opts.Root, kingupdate.DefaultStatePath)))
-	r.add(checkTUFRoot(rooted(opts.Root, "/etc/kingai/update/root.json")))
+	r.add(checkTUFRoot(rooted(opts.Root, "/etc/kingai/update/root.json"), referenceTime))
 	r.add(checkSecureBoot(opts.Root))
 
 	r.finalize()
@@ -147,8 +149,8 @@ func checkABState(path string) Check {
 	return Check{ID: "ab-state", Status: "pass", Severity: "critical", Summary: fmt.Sprintf("slot %s (%s) is confirmed", s.ActiveSlot, s.ActiveVersion)}
 }
 
-func checkTUFRoot(path string) Check {
-	b, err := os.ReadFile(path)
+func checkTUFRoot(path string, now time.Time) Check {
+	st, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: "production TUF bootstrap root is not provisioned", Recommendation: "Provision the pinned TUF root out-of-band before enabling production network updates."}
@@ -156,13 +158,32 @@ func checkTUFRoot(path string) Check {
 		if errors.Is(err, os.ErrPermission) {
 			return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: "TUF root exists but is not readable by this diagnostic user", Recommendation: "Validate the protected TUF root locally before enabling update checks."}
 		}
+		return Check{ID: "tuf-root", Status: "fail", Severity: "warning", Summary: "TUF root cannot be inspected: " + err.Error(), Recommendation: "Restore the trusted root only from an authenticated offline source."}
+	}
+	if !st.Mode().IsRegular() {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root is not a regular file", Recommendation: "Disable network updates and restore root.json as a verified regular file from an offline source."}
+	}
+	if st.Mode().Perm()&0o022 != 0 {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: fmt.Sprintf("TUF bootstrap root is writable by group/other (mode %04o)", st.Mode().Perm()), Recommendation: "Remove group/other write permission and verify root.json again against the offline trust source before enabling updates."}
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: "TUF root exists but is not readable by this diagnostic user", Recommendation: "Validate the protected TUF root locally before enabling update checks."}
+		}
 		return Check{ID: "tuf-root", Status: "fail", Severity: "warning", Summary: "TUF root cannot be read: " + err.Error(), Recommendation: "Restore the trusted root only from an authenticated offline source."}
 	}
-	var doc struct { Signed struct { Type string `json:"_type"` } `json:"signed"` }
-	if err := json.Unmarshal(b, &doc); err != nil || doc.Signed.Type != "root" {
-		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root has an invalid structure", Recommendation: "Disable network updates and restore a verified offline TUF root."}
+	info, err := tufclient.ValidateTrustedRootIntegrity(b)
+	if err != nil {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root signature threshold validation failed: " + err.Error(), Recommendation: "Disable network updates and restore a self-consistent, threshold-signed root.json from the authenticated offline trust source."}
 	}
-	return Check{ID: "tuf-root", Status: "pass", Severity: "critical", Summary: "pinned TUF bootstrap root is present and structurally valid"}
+	if !info.Expires.After(now) {
+		return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: fmt.Sprintf("TUF root v%d is signature-valid but expired at %s", info.Version, info.Expires.Format(time.RFC3339)), Recommendation: "Allow only verified TUF root rotation to a newer root; do not replace the trust anchor from the network or bypass TUF verification."}
+	}
+	if info.Expires.Sub(now) <= 30*24*time.Hour {
+		return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: fmt.Sprintf("TUF root v%d is signature-valid but expires soon at %s", info.Version, info.Expires.Format(time.RFC3339)), Recommendation: "Prepare and verify the next offline-signed TUF root rotation before this root expires."}
+	}
+	return Check{ID: "tuf-root", Status: "pass", Severity: "critical", Summary: fmt.Sprintf("TUF root v%d passes self-signature threshold %d with %d trusted keys; expires %s", info.Version, info.Threshold, info.KeyCount, info.Expires.Format(time.RFC3339))}
 }
 
 func checkSecureBoot(root string) Check {
