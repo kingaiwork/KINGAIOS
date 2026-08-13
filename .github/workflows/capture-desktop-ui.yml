@@ -1,0 +1,94 @@
+name: KINGAI OS Desktop UI Capture
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'internal/desktop/**'
+      - 'distro/packages/desktop.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-live-iso.sh'
+      - 'scripts/capture-desktop-frame.sh'
+      - '.github/workflows/capture-desktop-ui.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kingai-desktop-ui-capture
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install image, VM and capture tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 ovmf socat imagemagick
+      - name: Build Desktop root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
+      - name: Inject graphical readiness probe
+        shell: bash
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo tee "$root/usr/lib/systemd/system/kingai-desktop-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI Desktop graphical readiness marker
+          Requires=sddm.service
+          After=sddm.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'echo KINGAI_DESKTOP_GRAPHICAL_READY > /dev/ttyS0'
+
+          [Install]
+          WantedBy=graphical.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/graphical.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-smoke.service "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-smoke.service"
+      - name: Build Desktop Live ISO
+        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh desktop dist
+      - name: Capture real Desktop framebuffer
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          chmod +x scripts/capture-desktop-frame.sh
+          bash scripts/capture-desktop-frame.sh "$iso" kingai-desktop-real.png
+      - name: Upload capture artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-desktop-real-capture
+          path: |
+            kingai-desktop-real.png
+            kingai-desktop-real.log
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish capture to static website when token is configured
+        env:
+          SYNC_TOKEN: ${{ secrets.KINGAI_WEB_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo 'KINGAI_WEB_SYNC_TOKEN is not configured; keeping screenshot as workflow artifact only.'
+            exit 0
+          fi
+          GH_TOKEN="$SYNC_TOKEN" gh repo clone kingaiwork/Kingaiosweb web -- --depth=1
+          mkdir -p web/public/assets/captures
+          cp kingai-desktop-real.png web/public/assets/captures/desktop-latest.png
+          cd web
+          git config user.name 'kingai-capture[bot]'
+          git config user.email '66586837+kingaiwork@users.noreply.github.com'
+          git add -- public/assets/captures/desktop-latest.png
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m '[capture-os] refresh real desktop screenshot'
+          GH_TOKEN="$SYNC_TOKEN" gh auth setup-git
+          git push origin HEAD:main
