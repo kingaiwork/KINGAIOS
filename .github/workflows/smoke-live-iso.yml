@@ -8,6 +8,8 @@ on:
       - 'scripts/build-rootfs.sh'
       - 'distro/packages/server.txt'
       - 'distro/overlay/**'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/smoke-live-iso.yml'
   workflow_dispatch:
 
@@ -22,7 +24,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.23.x'
+          go-version-file: go.mod
           cache: false
       - name: Install image and VM tooling
         run: |
@@ -38,7 +40,7 @@ jobs:
           test "$(sudo stat -c '%u:%g' "$root")" = "0:0"
       - name: Build hybrid Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh server dist
-      - name: Validate ISO filesystem and checksums
+      - name: Validate ISO filesystem checksums and SBOM
         run: |
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
           test -s "$iso"
@@ -46,6 +48,7 @@ jobs:
           xorriso -indev "$iso" -find /md5sum.txt -type f -exec lsdl --
           test -f "$iso.sha256"
           test -f "$iso.manifest.json"
+          test -f "$iso.spdx.json"
           sha256sum -c "$iso.sha256"
       - name: QEMU BIOS boot smoke
         shell: bash
