@@ -1,0 +1,133 @@
+name: KINGAI OS Installer VM Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'distro/packages/server.txt'
+      - 'distro/packages/installer-*.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - '.github/workflows/smoke-installer-vm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-server-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install build installer and VM tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd \
+            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
+            grub-efi-amd64-bin grub2-common \
+            qemu-utils qemu-system-x86 ovmf jq
+      - name: Build installable KINGAI Server root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Add installed-system readiness marker
+        shell: bash
+        run: |
+          root=dist/rootfs-server-amd64
+          sudo tee "$root/usr/lib/systemd/system/kingai-installed-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI installed-system CI marker
+          After=local-fs.target kingaid.service
+          Wants=kingaid.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'mountpoint -q /var/lib/kingai-state && echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0'
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-installed-smoke.service \
+            "$root/etc/systemd/system/multi-user.target.wants/kingai-installed-smoke.service"
+      - name: Build installer binary
+        run: go build -trimpath -o dist/kingai-installer ./cmd/kingai-installer
+      - name: Create disposable NBD target
+        shell: bash
+        run: |
+          truncate -s 26G dist/installer-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw dist/installer-test.raw
+          sudo udevadm settle
+          test "$(lsblk -dn -o TYPE /dev/nbd0)" = disk
+          head -c 64 /dev/urandom > dist/state.key
+          chmod 600 dist/state.key
+      - name: Execute gated installer on disposable disk
+        shell: bash
+        run: |
+          sudo env \
+            KINGAI_INSTALLER_ALLOW_WRITE=1 \
+            KINGAI_INSTALLER_CI=1 \
+            KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
+            ./dist/kingai-installer execute \
+              --target /dev/nbd0 \
+              --profile server \
+              --source-root "$PWD/dist/rootfs-server-amd64" \
+              --state-key "$PWD/dist/state.key" \
+              --confirm ERASE:/dev/nbd0 | tee dist/install-result.json
+          jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' dist/install-result.json >/dev/null
+      - name: Validate GPT A-B and encrypted STATE
+        shell: bash
+        run: |
+          sudo udevadm settle
+          sudo sgdisk -p /dev/nbd0
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p1)" = KINGAI_EFI
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
+          sudo cryptsetup isLuks /dev/nbd0p4
+          mkdir -p dist/check-root dist/check-efi
+          sudo mount /dev/nbd0p2 dist/check-root
+          sudo mount /dev/nbd0p1 dist/check-efi
+          grep -q '^NAME="KINGAI OS"' dist/check-root/usr/lib/os-release
+          grep -q 'KINGAI_STATE' dist/check-root/etc/crypttab
+          test -f dist/check-root/etc/kingai/state-test.key
+          test "$(sudo stat -c '%a' dist/check-root/etc/kingai/state-test.key)" = 600
+          test -f dist/check-root/boot/grub/grub.cfg
+          test -f dist/check-efi/EFI/BOOT/BOOTX64.EFI
+          sudo umount dist/check-efi
+          sudo umount dist/check-root
+      - name: Disconnect installer target
+        run: |
+          sudo qemu-nbd --disconnect /dev/nbd0
+          sudo udevadm settle
+      - name: Boot installed disk with UEFI
+        shell: bash
+        run: |
+          codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
+          varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$codefd" && test -f "$varsfd"
+          cp "$varsfd" dist/OVMF_VARS.fd
+          set +e
+          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
+            -drive if=pflash,format=raw,file=dist/OVMF_VARS.fd \
+            -drive file=dist/installer-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot -snapshot > dist/qemu-installed.log 2>&1
+          code=$?
+          set -e
+          cat dist/qemu-installed.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_INSTALLED_BOOT_OK' dist/qemu-installed.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' dist/qemu-installed.log
+      - name: Cleanup NBD
+        if: always()
+        run: |
+          mount | awk '$3 ~ /check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
