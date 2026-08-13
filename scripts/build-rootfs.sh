@@ -20,7 +20,17 @@ mkdir -p "$ROOT/usr/share/doc/kingai-os" "$ROOT/usr/share/kingai/legal"
 install -Dm644 LICENSE "$ROOT/usr/share/doc/kingai-os/LICENSE";install -Dm644 NOTICE "$ROOT/usr/share/doc/kingai-os/NOTICE";install -Dm644 legal/THIRD_PARTY.md "$ROOT/usr/share/kingai/legal/THIRD_PARTY.md";install -Dm644 legal/models.json "$ROOT/usr/share/kingai/legal/models.json"
 chroot "$ROOT" dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' | LC_ALL=C sort > "$ROOT/usr/share/kingai/legal/packages.tsv"
 python3 scripts/generate-sbom.py "$ROOT/usr/share/kingai/legal/packages.tsv" "$ROOT/usr/share/kingai/legal/KINGAI-OS.spdx.json" "$VERSION" "$PROFILE" "$ARCH"
-if [[ "$PROFILE" == "desktop" ]];then mkdir -p "$ROOT/usr/share/kingai" "$ROOT/usr/share/plasma/look-and-feel" "$ROOT/usr/share/plasma/plasmoids" "$ROOT/etc/xdg/autostart";cp -a --no-preserve=ownership desktop "$ROOT/usr/share/kingai/";cp -a --no-preserve=ownership desktop/look-and-feel/. "$ROOT/usr/share/plasma/look-and-feel/";cp -a --no-preserve=ownership desktop/plasmoids/org.kingai.agentcenter "$ROOT/usr/share/plasma/plasmoids/";install -Dm755 desktop/welcome/launch.sh "$ROOT/usr/lib/kingai/kingai-welcome";install -Dm644 desktop/welcome/kingai-welcome.desktop "$ROOT/etc/xdg/autostart/kingai-welcome.desktop";fi
+if [[ "$PROFILE" == "desktop" ]];then
+  mkdir -p "$ROOT/usr/share/kingai" "$ROOT/usr/share/plasma/look-and-feel" "$ROOT/usr/share/plasma/plasmoids" "$ROOT/etc/xdg/autostart" "$ROOT/etc/systemd/system"
+  cp -a --no-preserve=ownership desktop "$ROOT/usr/share/kingai/"
+  cp -a --no-preserve=ownership desktop/look-and-feel/. "$ROOT/usr/share/plasma/look-and-feel/"
+  cp -a --no-preserve=ownership desktop/plasmoids/org.kingai.agentcenter "$ROOT/usr/share/plasma/plasmoids/"
+  install -Dm755 desktop/welcome/launch.sh "$ROOT/usr/lib/kingai/kingai-welcome"
+  install -Dm644 desktop/welcome/kingai-welcome.desktop "$ROOT/etc/xdg/autostart/kingai-welcome.desktop"
+  test -f "$ROOT/usr/lib/systemd/system/sddm.service" || { echo "sddm.service missing from desktop rootfs" >&2; exit 1; }
+  ln -sfn /usr/lib/systemd/system/graphical.target "$ROOT/etc/systemd/system/default.target"
+  ln -sfn /usr/lib/systemd/system/sddm.service "$ROOT/etc/systemd/system/display-manager.service"
+fi
 chown -R 0:0 "$ROOT/etc/kingai" "$ROOT/usr/lib/kingai" "$ROOT/usr/share/kingai" "$ROOT/usr/share/doc/kingai-os"
 if [[ "$PROFILE" == "desktop" ]]; then chown -R 0:0 "$ROOT/usr/share/plasma/plasmoids/org.kingai.agentcenter" "$ROOT/usr/share/plasma/look-and-feel/org.kingai."*; fi
 chown 0:0 "$ROOT/usr/lib/os-release" "$ROOT/etc/motd" "$ROOT/etc/issue" "$ROOT/etc/issue.net" "$ROOT" 2>/dev/null || true
