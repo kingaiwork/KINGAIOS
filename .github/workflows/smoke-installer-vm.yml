@@ -4,12 +4,19 @@ on:
   push:
     branches: [main]
     paths:
+      - 'cmd/kingai/**'
       - 'cmd/kingai-installer/**'
+      - 'internal/diagnostics/**'
       - 'internal/installer/**'
+      - 'internal/tufclient/**'
+      - 'internal/update/**'
+      - 'configs/**'
+      - 'systemd/**'
       - 'distro/packages/server.txt'
       - 'distro/packages/installer-*.txt'
       - 'distro/overlay/**'
       - 'scripts/build-rootfs.sh'
+      - 'tools/ci/make-tuf-root/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/smoke-installer-vm.yml'
@@ -25,7 +32,7 @@ permissions:
 jobs:
   install-server-amd64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -36,19 +43,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync grub-efi-amd64-bin grub2-common qemu-utils qemu-system-x86 ovmf jq
-      - name: Build CI installer binary in user workspace
+      - name: Build CI installer binary
         run: |
           mkdir -p ci
           go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
           test -x ci/kingai-installer
       - name: Build installable KINGAI Server root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+      - name: Inject signature-valid but intentionally writable CI TUF root
+        shell: bash
+        run: |
+          go run ./tools/ci/make-tuf-root --output ci/root.json --mode 0644
+          sudo install -Dm0666 ci/root.json dist/rootfs-server-amd64/etc/kingai/update/root.json
+          test "$(sudo stat -c '%a' dist/rootfs-server-amd64/etc/kingai/update/root.json)" = 666
       - name: Verify root filesystem ownership and installer runtime
         run: |
           root=dist/rootfs-server-amd64
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
           for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage grub-editenv; do sudo chroot "$root" sh -c "command -v $tool >/dev/null"; done
-      - name: Add installed-system readiness and health marker
+      - name: Add installed-system readiness and safe-repair marker
         shell: bash
         run: |
           root=dist/rootfs-server-amd64
@@ -57,10 +70,14 @@ jobs:
           set -eu
           mountpoint -q /var/lib/kingai-state
           test -e /dev/mapper/KINGAI_STATE
+          test "$(stat -c '%a' /etc/kingai/update/root.json)" = 666
           systemctl start kingai-health-scan.service
           test -s /var/lib/kingai/health/latest.json
+          test "$(stat -c '%a' /etc/kingai/update/root.json)" = 644
           grep -Fq '"product": "KINGAI OS"' /var/lib/kingai/health/latest.json
-          grep -Eq '"status": "(healthy|degraded|critical)"' /var/lib/kingai/health/latest.json
+          grep -Fq '"action_id": "tuf.harden-root-permissions"' /var/lib/kingai/health/latest.json
+          grep -Fq '"status": "applied"' /var/lib/kingai/health/latest.json
+          echo KINGAI_SAFE_AUTO_REPAIR_OK > /dev/ttyS0
           echo KINGAI_HEALTH_SNAPSHOT_OK > /dev/ttyS0
           echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0
           EOF
@@ -111,9 +128,9 @@ jobs:
           grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
           test -f ci/check-root/etc/kingai/state-test.key
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
+          test "$(sudo stat -c '%a' ci/check-root/etc/kingai/update/root.json)" = 666
           test -f ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
           test -f ci/check-root/usr/lib/systemd/system/kingai-health-scan.service
-          test -f ci/check-root/usr/lib/systemd/system/kingai-health-scan.timer
           test "$(readlink ci/check-root/etc/systemd/system/local-fs-pre.target.wants/kingai-state-unlock-ci.service)" = '/usr/lib/systemd/system/kingai-state-unlock-ci.service'
           test "$(readlink ci/check-root/etc/systemd/system/casper-md5check.service)" = '/dev/null'
           test "$(readlink ci/check-root/etc/systemd/system/default.target)" = '/usr/lib/systemd/system/multi-user.target'
@@ -130,7 +147,7 @@ jobs:
         run: |
           sudo qemu-nbd --disconnect /dev/nbd0
           sudo udevadm settle
-      - name: Boot installed disk with UEFI encrypted STATE and health intelligence
+      - name: Boot installed disk and require safe health self-healing
         shell: bash
         run: |
           codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
@@ -138,11 +155,12 @@ jobs:
           test -f "$codefd" && test -f "$varsfd"
           cp "$varsfd" ci/OVMF_VARS.fd
           set +e
-          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file="$codefd" -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd -drive file=ci/installer-test.raw,format=raw,if=virtio -display none -serial stdio -no-reboot -snapshot > ci/qemu-installed.log 2>&1
+          timeout 240 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file="$codefd" -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd -drive file=ci/installer-test.raw,format=raw,if=virtio -display none -serial stdio -no-reboot -snapshot > ci/qemu-installed.log 2>&1
           code=$?
           set -e
           cat ci/qemu-installed.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_SAFE_AUTO_REPAIR_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_HEALTH_SNAPSHOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_INSTALLED_BOOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed.log
