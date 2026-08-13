@@ -55,6 +55,7 @@ jobs:
           go vet ./...
           python3 -m py_compile scripts/generate-sbom.py
           bash -n scripts/*.sh desktop/welcome/*.sh
+          bash scripts/test-release-base-version.sh
       - name: Install build and VM tooling
         run: |
           sudo apt-get update
@@ -87,12 +88,15 @@ jobs:
         shell: bash
         run: |
           channel='${{ steps.params.outputs.channel }}'
+          manifest='${{ steps.artifact.outputs.manifest }}'
           if [[ "$channel" == beta || "$channel" == rc || "$channel" == stable ]]; then
             test -f release/gates.json || { echo 'non-dev release requires release/gates.json' >&2; exit 1; }
-            jq -e '.installer_vm==true and .ab_update_vm==true and .recovery_vm==true and .tuf_client==true' release/gates.json >/dev/null || { echo 'Beta gate incomplete' >&2; exit 1; }
+            jq -e '.installer_vm==true and .ab_update_vm==true and .recovery_vm==true and .tuf_client==true' release/gates.json >/dev/null || { echo 'Beta functional gate incomplete' >&2; exit 1; }
+            jq -e '.installable==true and (.stage != "developer-foundation")' "$manifest" >/dev/null || { echo 'Beta/RC/Stable publishing requires a non-developer installable artifact; current Live ISO is not eligible.' >&2; exit 1; }
           fi
           if [[ "$channel" == rc || "$channel" == stable ]]; then
             jq -e '.secure_boot_vm==true and .tuf_repository==true and .production_signing_ready==true' release/gates.json >/dev/null || { echo 'RC/Stable trust gates incomplete' >&2; exit 1; }
+            jq -e '.secure_boot==true' "$manifest" >/dev/null || { echo 'RC/Stable artifact itself must be Secure-Boot capable.' >&2; exit 1; }
           fi
           if [[ "$channel" == stable ]]; then
             jq -e '.protected_branch==true and .rollback_drill==true and .recovery_drill==true and .r2_delivery==true' release/gates.json >/dev/null || { echo 'Stable governance/delivery gates incomplete' >&2; exit 1; }
@@ -124,7 +128,7 @@ jobs:
           version=$(tr -d '[:space:]' < VERSION)
           profile='${{ steps.params.outputs.profile }}'
           channel='${{ steps.params.outputs.channel }}'
-          base_version="${version%-$channel}"
+          base_version=$(bash scripts/release-base-version.sh "$version")
           if [[ "$channel" == stable ]]; then
             tag="v${base_version}-${profile}"
             title="KINGAI OS ${base_version} ${profile^}"
