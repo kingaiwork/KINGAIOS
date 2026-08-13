@@ -30,8 +30,26 @@ jobs:
         run: go test ./...
       - name: Vet core
         run: go vet ./...
-      - name: Validate shell scripts
-        run: bash -n scripts/*.sh desktop/welcome/*.sh
+      - name: Validate shell and JSON control files
+        run: |
+          bash -n scripts/*.sh desktop/welcome/*.sh
+          sh -n distro/overlay/usr/lib/kingai/kingai-health-scan
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          paths = [
+              Path('configs/policy.json'), Path('configs/agents.json'),
+              Path('configs/models.json'), Path('configs/system.json'),
+              Path('release/gates.json'),
+          ]
+          for path in paths:
+              json.loads(path.read_text())
+          gates = json.loads(Path('release/gates.json').read_text())
+          assert gates.get('schema') == 1
+          for key, value in gates.items():
+              if key not in {'schema', 'notes'}:
+                  assert isinstance(value, bool), (key, value)
+          PY
       - name: Check required files
         run: |
           test -f README.md
@@ -42,8 +60,12 @@ jobs:
           test -f configs/policy.json
           test -f configs/agents.json
           test -f configs/models.json
+          test -f configs/system.json
           test -f systemd/kingaid.service
           test -f systemd/kingai-update-health.service
+          test -f distro/overlay/usr/lib/systemd/system/kingai-health-scan.service
+          test -f distro/overlay/usr/lib/systemd/system/kingai-health-scan.timer
+          test -f distro/overlay/usr/lib/kingai/kingai-health-scan
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
           test -f scripts/build-iot-image.sh
@@ -60,7 +82,7 @@ jobs:
           ./dist/kingai-installer version
           ./dist/kingai-update --help >/dev/null 2>&1 || test $? -eq 2
           ./dist/kingai-recovery 2>/dev/null || test $? -eq 2
-      - name: End-to-end kingaid local IPC and security smoke
+      - name: End-to-end kingaid local IPC security and health intelligence smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +103,24 @@ jobs:
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/status > "$tmp/status.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","capability":"filesystem.read"}' http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"service.restart"}' http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
+
+          diag="$tmp/diagroot"
+          mkdir -p "$diag/etc/kingai/update" "$diag/var/lib/kingai-state/kingai/update"
+          printf 'NAME="KINGAI OS"\nID=kingai\n' > "$diag/etc/os-release"
+          cp configs/policy.json "$diag/etc/kingai/policy.json"
+          cp configs/system.json "$diag/etc/kingai/system.json"
+          cp configs/agents.json "$diag/etc/kingai/agents.json"
+          cp configs/models.json "$diag/etc/kingai/models.json"
+          cat > "$diag/etc/kingai/update/root.json" <<'EOF'
+          {"signed":{"_type":"root"}}
+          EOF
+          cat > "$diag/var/lib/kingai-state/kingai/update/slots.json" <<'EOF'
+          {"active_slot":"A","active_version":"0.1.0-ci","boot_attempts":0,"max_boot_attempts":3,"confirmed":true,"rollback_required":false,"updated_at":"2026-01-01T00:00:00Z"}
+          EOF
+          export KINGAI_DIAGNOSTIC_ROOT="$diag"
+          ./dist/kingai doctor --json > "$tmp/doctor.json"
+          ./dist/kingai status --json > "$tmp/cli-status.json"
+
           python3 - "$tmp" <<'PY'
           import json, pathlib, sys
           root = pathlib.Path(sys.argv[1])
@@ -94,6 +134,14 @@ jobs:
           assert public['product'] == 'KINGAI OS' and public['registered_agents'] >= 1
           lowered = (root/'public-status.json').read_text().lower()
           assert not any(word in lowered for word in ('prompt','token','secret','api_key','password','memory_content'))
+          doctor = json.loads((root/'doctor.json').read_text())
+          assert doctor['status'] == 'healthy' and doctor['score'] == 100, doctor
+          checks = {c['id']: c for c in doctor['checks']}
+          assert checks['daemon']['status'] == 'pass'
+          assert checks['ab-state']['status'] == 'pass'
+          assert checks['tuf-root']['status'] == 'pass'
+          cli_status = json.loads((root/'cli-status.json').read_text())
+          assert cli_status['name'] == 'KINGAI OS'
           PY
           test "$(stat -c '%a' "$KINGAI_PUBLIC_STATUS")" = 644
           test -s "$KINGAI_AUDIT"
