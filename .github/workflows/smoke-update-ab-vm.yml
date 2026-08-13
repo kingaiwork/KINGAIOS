@@ -1,0 +1,200 @@
+name: KINGAI OS A-B Update VM Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-update/**'
+      - 'internal/update/**'
+      - 'internal/installer/**'
+      - 'systemd/kingai-update-health.service'
+      - 'scripts/build-rootfs.sh'
+      - '.github/workflows/smoke-update-ab-vm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-update-ab-vm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-rollback-server-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install image update and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd \
+            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
+            grub-efi-amd64-bin grub2-common \
+            qemu-utils qemu-system-x86 ovmf jq
+      - name: Build installer updater and server rootfs
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+          go build -trimpath -o ci/kingai-update ./cmd/kingai-update
+          sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+          test -L dist/rootfs-server-amd64/etc/systemd/system/multi-user.target.wants/kingai-update-health.service
+      - name: Prepare disposable installed disk
+        shell: bash
+        run: |
+          truncate -s 26G ci/update-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/update-test.raw
+          sudo udevadm settle
+          head -c 64 /dev/urandom > ci/state.key
+          chmod 600 ci/state.key
+          sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
+            ./ci/kingai-installer execute \
+              --target /dev/nbd0 --profile server \
+              --source-root "$PWD/dist/rootfs-server-amd64" \
+              --state-key "$PWD/ci/state.key" --confirm ERASE:/dev/nbd0 > ci/install.json
+          jq -e '.active_slot == "A"' ci/install.json >/dev/null
+      - name: Build synthetic verified v2 root and stage A to B
+        shell: bash
+        run: |
+          sudo cp -a dist/rootfs-server-amd64 ci/root-v2
+          sudo sed -i 's/^VERSION_ID=.*/VERSION_ID="0.1.1-ci"/' ci/root-v2/usr/lib/os-release
+          sudo tee ci/root-v2/usr/lib/systemd/system/kingai-ab-ci-marker.service >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI A-B CI success marker
+          After=kingai-update-health.service
+          Requires=kingai-update-health.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'grep -q "\"active_slot\": \"B\"" /var/lib/kingai-state/kingai/update/slots.json && ! grep -q "\"pending_slot\"" /var/lib/kingai-state/kingai/update/slots.json && echo KINGAI_SLOT_B_CONFIRMED > /dev/ttyS0 && systemctl --no-block poweroff'
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo ln -sfn /usr/lib/systemd/system/kingai-ab-ci-marker.service ci/root-v2/etc/systemd/system/multi-user.target.wants/kingai-ab-ci-marker.service
+          sudo env KINGAI_UPDATE_ALLOW_WRITE=1 KINGAI_UPDATE_CI=1 \
+            ./ci/kingai-update stage --target-disk /dev/nbd0 \
+              --source-root "$PWD/ci/root-v2" --state-key "$PWD/ci/state.key" \
+              --target-version 0.1.1-ci --confirm UPDATE:/dev/nbd0 | tee ci/stage-v2.json
+          jq -e '.from_slot == "A" and .target_slot == "B"' ci/stage-v2.json >/dev/null
+          sudo grub-editenv /tmp/nonexistent list >/dev/null 2>&1 || true
+          sudo mkdir -p ci/check-a ci/check-state
+          sudo mount /dev/nbd0p2 ci/check-a
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_CHECK
+          sudo mount /dev/mapper/KINGAI_STATE_CHECK ci/check-state
+          grep -q 'menuentry.*Slot B' ci/check-a/boot/grub/grub.cfg
+          sudo grub-editenv ci/check-a/boot/grub/grubenv list | tee ci/grubenv-stage-v2.txt
+          grep -q '^kingai_pending=B$' ci/grubenv-stage-v2.txt
+          grep -q '"pending_slot": "B"' ci/check-state/kingai/update/slots.json
+          sudo umount ci/check-state ci/check-a
+          sudo cryptsetup close KINGAI_STATE_CHECK
+      - name: Disconnect NBD and boot pending B to health confirmation
+        shell: bash
+        run: |
+          sudo qemu-nbd --disconnect /dev/nbd0
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd ci/OVMF_VARS-v2.fd
+          set +e
+          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS-v2.fd \
+            -drive file=ci/update-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot > ci/qemu-v2.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-v2.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_SLOT_B_CONFIRMED' ci/qemu-v2.log
+      - name: Verify B confirmed then stage intentionally unhealthy A
+        shell: bash
+        run: |
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/update-test.raw
+          sudo udevadm settle
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_CHECK
+          sudo mkdir -p ci/check-state
+          sudo mount /dev/mapper/KINGAI_STATE_CHECK ci/check-state
+          jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == ""' ci/check-state/kingai/update/slots.json >/dev/null
+          sudo umount ci/check-state
+          sudo cryptsetup close KINGAI_STATE_CHECK
+
+          sudo cp -a dist/rootfs-server-amd64 ci/root-v3-fail
+          sudo sed -i 's/^VERSION_ID=.*/VERSION_ID="0.1.2-ci"/' ci/root-v3-fail/usr/lib/os-release
+          sudo ln -sfn /dev/null ci/root-v3-fail/etc/systemd/system/kingai-update-health.service
+          sudo tee ci/root-v3-fail/usr/lib/systemd/system/kingai-ab-ci-fail.service >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI A-B CI intentional unconfirmed boot
+          After=local-fs.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'echo KINGAI_SLOT_A_LEFT_UNCONFIRMED > /dev/ttyS0 && systemctl --no-block poweroff'
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo ln -sfn /usr/lib/systemd/system/kingai-ab-ci-fail.service ci/root-v3-fail/etc/systemd/system/multi-user.target.wants/kingai-ab-ci-fail.service
+          sudo env KINGAI_UPDATE_ALLOW_WRITE=1 KINGAI_UPDATE_CI=1 \
+            ./ci/kingai-update stage --target-disk /dev/nbd0 \
+              --source-root "$PWD/ci/root-v3-fail" --state-key "$PWD/ci/state.key" \
+              --target-version 0.1.2-ci --confirm UPDATE:/dev/nbd0 | tee ci/stage-v3.json
+          jq -e '.from_slot == "B" and .target_slot == "A"' ci/stage-v3.json >/dev/null
+          sudo qemu-nbd --disconnect /dev/nbd0
+      - name: Boot unhealthy pending A once without confirmation
+        shell: bash
+        run: |
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd ci/OVMF_VARS-v3a.fd
+          set +e
+          timeout 180 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS-v3a.fd \
+            -drive file=ci/update-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot > ci/qemu-v3a.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-v3a.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_SLOT_A_LEFT_UNCONFIRMED' ci/qemu-v3a.log
+          if grep -Fq 'KINGAI_SLOT_B_CONFIRMED' ci/qemu-v3a.log; then exit 1; fi
+      - name: Reboot and require automatic GRUB rollback to confirmed B
+        shell: bash
+        run: |
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd ci/OVMF_VARS-v3b.fd
+          set +e
+          timeout 210 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS-v3b.fd \
+            -drive file=ci/update-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot > ci/qemu-v3b.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-v3b.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_SLOT_B_CONFIRMED' ci/qemu-v3b.log
+          if grep -Fq 'KINGAI_SLOT_A_LEFT_UNCONFIRMED' ci/qemu-v3b.log; then exit 1; fi
+      - name: Verify rollback state is reconciled
+        shell: bash
+        run: |
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/update-test.raw
+          sudo udevadm settle
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_CHECK
+          sudo mkdir -p ci/check-state ci/check-a
+          sudo mount /dev/mapper/KINGAI_STATE_CHECK ci/check-state
+          sudo mount /dev/nbd0p2 ci/check-a
+          jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == "" and .rollback_required == false' ci/check-state/kingai/update/slots.json >/dev/null
+          sudo grub-editenv ci/check-a/boot/grub/grubenv list | tee ci/grubenv-final.txt
+          grep -q '^kingai_active=B$' ci/grubenv-final.txt
+          if grep -q '^kingai_pending=' ci/grubenv-final.txt; then exit 1; fi
+          sudo umount ci/check-a ci/check-state
+          sudo cryptsetup close KINGAI_STATE_CHECK
+          sudo qemu-nbd --disconnect /dev/nbd0
+      - name: Cleanup
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/check-(state|a)$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE_CHECK 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
