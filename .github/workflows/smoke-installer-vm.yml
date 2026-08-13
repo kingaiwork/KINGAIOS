@@ -13,6 +13,10 @@ on:
       - '.github/workflows/smoke-installer-vm.yml'
   workflow_dispatch:
 
+concurrency:
+  group: kingai-installer-vm-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -45,7 +49,7 @@ jobs:
         run: |
           root=dist/rootfs-server-amd64
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
-          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install; do
+          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage; do
             sudo chroot "$root" sh -c "command -v $tool >/dev/null"
           done
       - name: Add installed-system readiness marker
@@ -110,6 +114,7 @@ jobs:
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
           test -f ci/check-root/boot/grub/grub.cfg
           test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
+          test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
           sudo umount ci/check-efi
           sudo umount ci/check-root
       - name: Disconnect installer target
@@ -135,6 +140,10 @@ jobs:
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Fq 'KINGAI_INSTALLED_BOOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed.log
+          if grep -Fq 'grub>' ci/qemu-installed.log; then
+            echo 'Installed disk dropped to GRUB prompt.' >&2
+            exit 1
+          fi
       - name: Cleanup NBD
         if: always()
         run: |
