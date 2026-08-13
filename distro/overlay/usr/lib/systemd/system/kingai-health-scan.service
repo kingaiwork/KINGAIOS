@@ -27,6 +27,6 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX
-ReadWritePaths=/var/lib/kingai
+ReadWritePaths=/var/lib/kingai -/etc/kingai/update/root.json
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_FOWNER
 AmbientCapabilities=
