@@ -1,0 +1,118 @@
+name: KINGAI OS Recovery VM Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-recovery/**'
+      - 'internal/recovery/**'
+      - 'internal/update/**'
+      - 'distro/packages/recovery.txt'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-live-iso.sh'
+      - '.github/workflows/smoke-recovery-vm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-recovery-vm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with: {go-version: '1.23.x', cache: false}
+      - name: Install build and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync qemu-utils qemu-system-x86 ovmf jq
+      - name: Build Server source and Recovery ISO
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+          go build -trimpath -o ci/kingai-update ./cmd/kingai-update
+          go build -trimpath -o ci/kingai-recovery ./cmd/kingai-recovery
+          sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+          sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh recovery amd64 dist
+          sudo --preserve-env=PATH bash scripts/build-live-iso.sh recovery dist
+          sudo chown -R "$USER:$USER" dist
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Recovery-*.iso' -print -quit)
+          test -s "$iso"
+          sha256sum -c "$iso.sha256"
+          jq -e '.profile == "recovery" and .offline_recovery == true and .installable == false' "$iso.manifest.json" >/dev/null
+          test ! -e dist/rootfs-recovery-amd64/etc/systemd/system/multi-user.target.wants/kingaid.service
+          test ! -e dist/rootfs-recovery-amd64/etc/systemd/system/multi-user.target.wants/kingai-update-health.service
+          test ! -e dist/rootfs-recovery-amd64/usr/sbin/sshd
+      - name: Boot Recovery ISO BIOS smoke
+        shell: bash
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Recovery-*.iso' -print -quit)
+          set +e
+          timeout 150 qemu-system-x86_64 -m 1536 -smp 2 -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > ci/recovery-iso.log 2>&1
+          code=$?
+          set -e
+          cat ci/recovery-iso.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Eiq 'Linux version|casper|KINGAI' ci/recovery-iso.log
+      - name: Install disposable system and create pending B
+        shell: bash
+        run: |
+          truncate -s 26G ci/recovery-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/recovery-test.raw
+          sudo udevadm settle
+          head -c 64 /dev/urandom > ci/state.key; chmod 600 ci/state.key
+          sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 KINGAI_INSTALLER_TEST_PERSIST_KEY=1 ./ci/kingai-installer execute --target /dev/nbd0 --profile server --source-root "$PWD/dist/rootfs-server-amd64" --state-key "$PWD/ci/state.key" --confirm ERASE:/dev/nbd0 > ci/install.json
+          sudo cp -a dist/rootfs-server-amd64 ci/root-v2
+          sudo sed -i 's/^VERSION_ID=.*/VERSION_ID="0.1.1-recovery-ci"/' ci/root-v2/usr/lib/os-release
+          sudo env KINGAI_UPDATE_ALLOW_WRITE=1 KINGAI_UPDATE_CI=1 ./ci/kingai-update stage --target-disk /dev/nbd0 --source-root "$PWD/ci/root-v2" --state-key "$PWD/ci/state.key" --target-version 0.1.1-recovery-ci --confirm UPDATE:/dev/nbd0 > ci/stage.json
+          jq -e '.target_slot == "B"' ci/stage.json >/dev/null
+      - name: Recovery inspect and fail-closed gates
+        run: |
+          sudo env KINGAI_RECOVERY_CI=1 ./ci/kingai-recovery inspect --target-disk /dev/nbd0 --state-key "$PWD/ci/state.key" > ci/inspect.json
+          jq -e '.active_slot == "A" and .pending_slot == "B"' ci/inspect.json >/dev/null
+          if sudo env KINGAI_RECOVERY_CI=1 ./ci/kingai-recovery rollback --target-disk /dev/nbd0 --state-key "$PWD/ci/state.key" --confirm ROLLBACK:/dev/nbd0; then
+            echo 'rollback unexpectedly worked without explicit write enable' >&2; exit 1
+          fi
+          if sudo env KINGAI_RECOVERY_ALLOW_WRITE=1 KINGAI_RECOVERY_CI=1 ./ci/kingai-recovery rollback --target-disk /dev/nbd0 --state-key "$PWD/ci/state.key" --confirm ROLLBACK:/dev/sda; then
+            echo 'rollback unexpectedly accepted mismatched confirmation' >&2; exit 1
+          fi
+      - name: Roll back pending update offline and repair boot
+        shell: bash
+        run: |
+          sudo env KINGAI_RECOVERY_ALLOW_WRITE=1 KINGAI_RECOVERY_CI=1 ./ci/kingai-recovery rollback --target-disk /dev/nbd0 --state-key "$PWD/ci/state.key" --confirm ROLLBACK:/dev/nbd0 > ci/rollback.json
+          jq -e '.active_slot == "A" and (.pending_slot // "") == "" and .state.rollback_required == false' ci/rollback.json >/dev/null
+          sudo env KINGAI_RECOVERY_ALLOW_WRITE=1 KINGAI_RECOVERY_CI=1 ./ci/kingai-recovery repair-boot --target-disk /dev/nbd0 --state-key "$PWD/ci/state.key" --confirm REPAIR:/dev/nbd0 > ci/repair.json
+          jq -e '.active_slot == "A" and (.pending_slot // "") == ""' ci/repair.json >/dev/null
+          sudo mkdir -p ci/check-a
+          sudo mount /dev/nbd0p2 ci/check-a
+          grep -q 'menuentry.*Slot A' ci/check-a/boot/grub/grub.cfg
+          grep -q 'menuentry.*Slot B' ci/check-a/boot/grub/grub.cfg
+          sudo grub-editenv ci/check-a/boot/grub/grubenv list | tee ci/recovery-grubenv.txt
+          grep -q '^kingai_active=A$' ci/recovery-grubenv.txt
+          if grep -q '^kingai_pending=' ci/recovery-grubenv.txt; then exit 1; fi
+          sudo umount ci/check-a
+          sudo qemu-nbd --disconnect /dev/nbd0
+      - name: Boot recovered installed system
+        shell: bash
+        run: |
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd ci/OVMF_VARS.fd
+          set +e
+          timeout 180 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd -drive file=ci/recovery-test.raw,format=raw,if=virtio -display none -serial stdio -no-reboot -snapshot > ci/recovered.log 2>&1
+          code=$?
+          set -e
+          cat ci/recovered.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Eiq 'KINGAI|Linux version|systemd' ci/recovered.log
+      - name: Cleanup
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/check-a$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE_CHECK 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
