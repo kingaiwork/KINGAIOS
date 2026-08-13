@@ -77,9 +77,8 @@ func execute(args []string) {
 	confirm := fs.String("confirm", "", "must exactly equal ERASE:/dev/DEVICE")
 	_ = fs.Parse(args)
 
-	// The installer library streams formatter/partitioner/GRUB diagnostics through
-	// os.Stdout. For the CLI contract, redirect those operational messages to
-	// stderr and restore stdout before serializing the single machine-readable result.
+	// Keep stdout machine-readable. The installer and the UEFI finalizer emit
+	// destructive-operation diagnostics to stderr; only the final result is JSON.
 	jsonOut := os.Stdout
 	os.Stdout = os.Stderr
 	res, err := installer.Execute(installer.ExecuteOptions{
@@ -89,6 +88,9 @@ func execute(args []string) {
 		StateKey:     *stateKey,
 		Confirmation: *confirm,
 	})
+	if err == nil {
+		err = installer.FinalizeUEFIBoot(res)
+	}
 	os.Stdout = jsonOut
 	if err != nil {
 		fail(err)
