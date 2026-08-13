@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.23.x'
+          go-version-file: go.mod
           cache: false
       - name: Build KINGAI binaries
         run: |
@@ -25,6 +25,7 @@ jobs:
           go build -trimpath -o dist/kingaid ./cmd/kingaid
           go build -trimpath -o dist/kingai-update ./cmd/kingai-update
           go build -trimpath -o dist/kingai-installer ./cmd/kingai-installer
+          go build -trimpath -o dist/kingai-recovery ./cmd/kingai-recovery
       - name: Unit tests
         run: go test ./...
       - name: Vet core
@@ -42,21 +43,23 @@ jobs:
           test -f configs/agents.json
           test -f configs/models.json
           test -f systemd/kingaid.service
+          test -f systemd/kingai-update-health.service
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
           test -f scripts/build-iot-image.sh
           test -f update/README.md
           test -f installer/README.md
           test -f iot/README.md
-          test -f profiles/server.yaml
-          test -f profiles/desktop.yaml
-          test -f profiles/iot.yaml
+          test -f trust/tuf/README.md
+          test -f release/gates.json
       - name: Smoke test CLI
         run: |
           ./dist/kingai version
           ./dist/kingai desktop list
           ./dist/kingai policy check filesystem.read
           ./dist/kingai-installer version
+          ./dist/kingai-update --help >/dev/null 2>&1 || test $? -eq 2
+          ./dist/kingai-recovery 2>/dev/null || test $? -eq 2
       - name: End-to-end kingaid local IPC and security smoke
         shell: bash
         run: |
@@ -72,39 +75,25 @@ jobs:
           pid=$!
           cleanup() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
           trap cleanup EXIT
-          for _ in $(seq 1 50); do
-            [[ -S "$KINGAI_SOCKET" && -f "$KINGAI_PUBLIC_STATUS" ]] && break
-            sleep 0.1
-          done
-          test -S "$KINGAI_SOCKET"
-          test -f "$KINGAI_PUBLIC_STATUS"
+          for _ in $(seq 1 50); do [[ -S "$KINGAI_SOCKET" && -f "$KINGAI_PUBLIC_STATUS" ]] && break; sleep 0.1; done
+          test -S "$KINGAI_SOCKET"; test -f "$KINGAI_PUBLIC_STATUS"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/healthz > "$tmp/health.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/status > "$tmp/status.json"
-          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" \
-            -H 'Content-Type: application/json' \
-            -d '{"agent":"main","capability":"filesystem.read"}' \
-            http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
-          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" \
-            -H 'Content-Type: application/json' \
-            -d '{"agent":"system-ops","capability":"service.restart"}' \
-            http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","capability":"filesystem.read"}' http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"service.restart"}' http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
           python3 - "$tmp" <<'PY'
           import json, pathlib, sys
           root = pathlib.Path(sys.argv[1])
           assert json.loads((root/'health.json').read_text())['ok'] is True
           status = json.loads((root/'status.json').read_text())
-          assert status['name'] == 'KINGAI OS'
-          assert status['agent_registry'] == 'enabled'
+          assert status['name'] == 'KINGAI OS' and status['agent_registry'] == 'enabled'
           assert json.loads((root/'main-policy.json').read_text())['allowed'] is True
           spoof = json.loads((root/'spoof-policy.json').read_text())
-          assert spoof['allowed'] is False
-          assert 'identity' in spoof['reason']
+          assert spoof['allowed'] is False and 'identity' in spoof['reason']
           public = json.loads((root/'public-status.json').read_text())
-          assert public['product'] == 'KINGAI OS'
-          assert public['registered_agents'] >= 1
-          forbidden = ('prompt','token','secret','api_key','password','memory_content')
+          assert public['product'] == 'KINGAI OS' and public['registered_agents'] >= 1
           lowered = (root/'public-status.json').read_text().lower()
-          assert not any(word in lowered for word in forbidden)
+          assert not any(word in lowered for word in ('prompt','token','secret','api_key','password','memory_content'))
           PY
           test "$(stat -c '%a' "$KINGAI_PUBLIC_STATUS")" = 644
           test -s "$KINGAI_AUDIT"
