@@ -24,7 +24,7 @@ latest_success_sha() {
 require_fresh() {
   local gate=$1 workflow=$2 regex=$3 sha changed
   sha=$(latest_success_sha "$workflow")
-  git cat-file -e "${sha}^{commit}" 2>/dev/null || git fetch --no-tags --depth=200 origin "$sha" >/dev/null 2>&1 || true
+  git cat-file -e "${sha}^{commit}" 2>/dev/null || git fetch --no-tags origin main >/dev/null 2>&1 || true
   git cat-file -e "${sha}^{commit}" 2>/dev/null || { echo "${gate}: evidence commit ${sha} is not available locally" >&2; return 1; }
   git merge-base --is-ancestor "$sha" "$GITHUB_SHA" || { echo "${gate}: evidence ${sha} is not an ancestor of ${GITHUB_SHA}" >&2; return 1; }
   changed=$(git diff --name-only "${sha}..${GITHUB_SHA}" -- | grep -E "$regex" || true)
@@ -37,22 +37,22 @@ require_fresh() {
 }
 
 if [[ "$profile" == desktop ]]; then
-  require_fresh installer '.github/workflows/smoke-installer-desktop-vm.yml' \
+  require_fresh installer 'smoke-installer-desktop-vm.yml' \
     '^(cmd/kingai-installer/|internal/installer/|internal/update/|desktop/|distro/packages/(desktop|installer-[^/]+)\.txt$|distro/overlay/|scripts/build-rootfs\.sh$|systemd/kingai-update-health\.service$|go\.(mod|sum)$)'
 else
-  require_fresh installer '.github/workflows/smoke-installer-vm.yml' \
+  require_fresh installer 'smoke-installer-vm.yml' \
     '^(cmd/kingai-installer/|internal/installer/|internal/update/|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|scripts/build-rootfs\.sh$|systemd/kingai-update-health\.service$|go\.(mod|sum)$)'
 fi
 
-require_fresh ab-update '.github/workflows/smoke-update-ab-vm.yml' \
+require_fresh ab-update 'smoke-update-ab-vm.yml' \
   '^(cmd/kingai-update/|cmd/kingai-installer/|internal/update/|internal/installer/|systemd/kingai-update-health\.service$|scripts/build-rootfs\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|go\.(mod|sum)$)'
-require_fresh recovery '.github/workflows/smoke-recovery-vm.yml' \
+require_fresh recovery 'smoke-recovery-vm.yml' \
   '^(cmd/kingai-recovery/|internal/recovery/|internal/update/|internal/installer/|distro/packages/recovery\.txt$|distro/overlay/|scripts/build-(rootfs|live-iso)\.sh$|go\.(mod|sum)$)'
-require_fresh tuf-client '.github/workflows/ci.yml' \
+require_fresh tuf-client 'ci.yml' \
   '^(internal/tufclient/|cmd/kingai-update/|go\.(mod|sum)$)'
 
 if [[ "$channel" == rc || "$channel" == stable ]]; then
-  require_fresh secure-boot '.github/workflows/smoke-secure-boot-vm.yml' \
+  require_fresh secure-boot 'smoke-secure-boot-vm.yml' \
     '^(internal/installer/|distro/packages/installer-amd64\.txt$|scripts/build-rootfs\.sh$|go\.(mod|sum)$)'
 fi
 
