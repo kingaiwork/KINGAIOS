@@ -48,4 +48,7 @@ fi
 # Developer builds deliberately do not require release evidence.
 env -u GITHUB_REPOSITORY -u GITHUB_SHA bash "$checker" dev server >/dev/null
 
-echo 'KINGAI release gate freshness regression tests passed.'
+# Release identity must never leak the source channel suffix into promoted tags.
+bash "$repo_root/scripts/test-release-base-version.sh" >/dev/null
+
+echo 'KINGAI release control regression tests passed.'
