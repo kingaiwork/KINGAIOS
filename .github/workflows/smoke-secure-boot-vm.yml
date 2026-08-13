@@ -8,6 +8,8 @@ on:
       - 'internal/installer/**'
       - 'distro/packages/installer-amd64.txt'
       - 'scripts/build-rootfs.sh'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/smoke-secure-boot-vm.yml'
   workflow_dispatch:
 
@@ -25,7 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
-        with: {go-version: '1.23.x', cache: false}
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Install build and VM tooling
         run: |
           sudo apt-get update
@@ -44,41 +48,26 @@ jobs:
       - name: Install to disposable NBD disk
         shell: bash
         run: |
-          truncate -s 26G ci/secure-boot.raw
-          sudo modprobe nbd max_part=16
-          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/secure-boot.raw
-          sudo udevadm settle
+          truncate -s 26G ci/secure-boot.raw; sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/secure-boot.raw; sudo udevadm settle
           head -c 64 /dev/urandom > ci/state.key; chmod 600 ci/state.key
           sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 KINGAI_INSTALLER_TEST_PERSIST_KEY=1 ./ci/kingai-installer execute --target /dev/nbd0 --profile server --source-root "$PWD/dist/rootfs-server-amd64" --state-key "$PWD/ci/state.key" --confirm ERASE:/dev/nbd0 > ci/install.json
           jq -e '.active_slot == "A"' ci/install.json >/dev/null
-          sudo mkdir -p ci/efi
-          sudo mount /dev/nbd0p1 ci/efi
-          sudo test -s ci/efi/EFI/BOOT/BOOTX64.EFI
-          sudo test -s ci/efi/EFI/BOOT/grubx64.efi
-          sudo test -f ci/efi/EFI/BOOT/KINGAI-SECURE-BOOT
+          sudo mkdir -p ci/efi; sudo mount /dev/nbd0p1 ci/efi
+          sudo test -s ci/efi/EFI/BOOT/BOOTX64.EFI; sudo test -s ci/efi/EFI/BOOT/grubx64.efi; sudo test -f ci/efi/EFI/BOOT/KINGAI-SECURE-BOOT
           grep -q '^secure_boot_compatible=true$' ci/efi/EFI/BOOT/KINGAI-SECURE-BOOT
           sudo sbverify --list ci/efi/EFI/BOOT/BOOTX64.EFI
           sudo sbverify --list ci/efi/EFI/BOOT/grubx64.efi
-          sudo umount ci/efi
-          sudo qemu-nbd --disconnect /dev/nbd0
+          sudo umount ci/efi; sudo qemu-nbd --disconnect /dev/nbd0
       - name: Boot with Secure Boot and Microsoft-enrolled OVMF keys
         shell: bash
         run: |
-          cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd ci/OVMF_VARS.secure.fd
-          set +e
-          timeout 210 qemu-system-x86_64 -machine q35,smm=on -global driver=cfi.pflash01,property=secure,value=on -m 2048 -smp 2 \
-            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.ms.fd \
-            -drive if=pflash,format=raw,file=ci/OVMF_VARS.secure.fd \
-            -drive file=ci/secure-boot.raw,format=raw,if=virtio \
-            -display none -serial stdio -no-reboot > ci/secure-boot.log 2>&1
-          code=$?
-          set -e
-          cat ci/secure-boot.log
+          cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd ci/OVMF_VARS.secure.fd; set +e
+          timeout 210 qemu-system-x86_64 -machine q35,smm=on -global driver=cfi.pflash01,property=secure,value=on -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.ms.fd -drive if=pflash,format=raw,file=ci/OVMF_VARS.secure.fd -drive file=ci/secure-boot.raw,format=raw,if=virtio -display none -serial stdio -no-reboot > ci/secure-boot.log 2>&1
+          code=$?; set -e; cat ci/secure-boot.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Eiq 'Linux version|KINGAI|systemd' ci/secure-boot.log
-          if grep -Eiq 'Security Violation|Access Denied|Image failed to verify|verification failed' ci/secure-boot.log; then
-            echo 'Secure Boot verification failure detected' >&2; exit 1
-          fi
+          if grep -Eiq 'Security Violation|Access Denied|Image failed to verify|verification failed' ci/secure-boot.log; then echo 'Secure Boot verification failure detected' >&2; exit 1; fi
       - name: Cleanup
         if: always()
         run: |
