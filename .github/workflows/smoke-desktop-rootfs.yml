@@ -14,6 +14,8 @@ on:
       - 'distro/packages/desktop.txt'
       - 'distro/overlay/**'
       - 'scripts/build-rootfs.sh'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/smoke-desktop-rootfs.yml'
   workflow_dispatch:
 
@@ -28,7 +30,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.23.x'
+          go-version-file: go.mod
           cache: false
       - name: Install rootfs tooling
         run: |
@@ -36,7 +38,7 @@ jobs:
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd
       - name: Build Ubuntu 26.04 based KINGAI Desktop RootFS
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
-      - name: Validate Desktop Core and Agent Center
+      - name: Validate Desktop Core Agent Center and health intelligence
         run: |
           root=dist/rootfs-desktop-amd64
           sudo chroot "$root" /usr/bin/kingai desktop list
@@ -48,6 +50,8 @@ jobs:
           sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml"
+          sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.service"
+          sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.timer"
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
           leaked=$(sudo find "$root/etc/kingai" "$root/usr/lib/kingai" "$root/usr/share/kingai" -uid "$(id -u)" -print -quit)
           test -z "$leaked" || { echo "build-host ownership leaked into KINGAI desktop files: $leaked"; exit 1; }
