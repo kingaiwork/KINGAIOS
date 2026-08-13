@@ -86,7 +86,9 @@ func (r *Report) add(c Check) {
 
 func (r *Report) finalize() {
 	criticalFailure := false
+	hasProblem := false
 	for _, c := range r.Checks {
+		if c.Status == "warn" || c.Status == "fail" { hasProblem = true }
 		if c.Status == "fail" && c.Severity == "critical" { criticalFailure = true }
 		if c.Recommendation != "" && (c.Status == "warn" || c.Status == "fail") {
 			// Checks are added in control-plane priority order, so this remains
@@ -94,7 +96,13 @@ func (r *Report) finalize() {
 			r.NextActions = append(r.NextActions, c.Recommendation)
 		}
 	}
-	if criticalFailure || r.Score < 60 { r.Status = "critical" } else if r.Score < 90 { r.Status = "degraded" } else { r.Status = "healthy" }
+	if criticalFailure || r.Score < 60 {
+		r.Status = "critical"
+	} else if hasProblem || r.Score < 90 {
+		r.Status = "degraded"
+	} else {
+		r.Status = "healthy"
+	}
 }
 
 func checkJSON(path, id string) Check {
