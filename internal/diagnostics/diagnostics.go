@@ -31,13 +31,14 @@ type Check struct {
 }
 
 type Report struct {
-	Schema      int       `json:"schema"`
-	Product     string    `json:"product"`
-	GeneratedAt time.Time `json:"generated_at"`
-	Score       int       `json:"score"`
-	Status      string    `json:"status"`
-	Checks      []Check   `json:"checks"`
-	NextActions []string  `json:"next_actions,omitempty"`
+	Schema      int            `json:"schema"`
+	Product     string         `json:"product"`
+	GeneratedAt time.Time      `json:"generated_at"`
+	Score       int            `json:"score"`
+	Status      string         `json:"status"`
+	Checks      []Check        `json:"checks"`
+	NextActions []string       `json:"next_actions,omitempty"`
+	Repairs     []RepairResult `json:"repairs,omitempty"`
 }
 
 type Options struct {
@@ -157,7 +158,7 @@ func checkABState(path string) Check {
 }
 
 func checkTUFRoot(path string, now time.Time) Check {
-	st, err := os.Stat(path)
+	st, err := os.Lstat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: "production TUF bootstrap root is not provisioned", Recommendation: "Provision the pinned TUF root out-of-band before enabling production network updates.", ActionID: "tuf.provision-root", RemediationMode: RemediationManual}
@@ -168,10 +169,12 @@ func checkTUFRoot(path string, now time.Time) Check {
 		return Check{ID: "tuf-root", Status: "fail", Severity: "warning", Summary: "TUF root cannot be inspected: " + err.Error(), Recommendation: "Restore the trusted root only from an authenticated offline source.", ActionID: "tuf.restore-root", RemediationMode: RemediationManual}
 	}
 	if !st.Mode().IsRegular() {
-		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root is not a regular file", Recommendation: "Disable network updates and restore root.json as a verified regular file from an offline source.", ActionID: "tuf.restore-root", RemediationMode: RemediationManual}
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root is not a regular file (symlinks and special files are refused)", Recommendation: "Disable network updates and restore root.json as a verified regular file from an offline source.", ActionID: "tuf.restore-root", RemediationMode: RemediationManual}
 	}
-	if st.Mode().Perm()&0o022 != 0 {
-		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: fmt.Sprintf("TUF bootstrap root is writable by group/other (mode %04o)", st.Mode().Perm()), Recommendation: "Remove group/other write permission and verify root.json again against the offline trust source before enabling updates.", ActionID: "tuf.harden-root-permissions", RemediationMode: RemediationSafeAuto}
+	if dst, err := os.Stat(filepath.Dir(path)); err != nil {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF trust directory cannot be inspected: " + err.Error(), Recommendation: "Inspect and restore the protected TUF trust directory before enabling updates.", ActionID: "tuf.restore-root", RemediationMode: RemediationManual}
+	} else if dst.Mode().Perm()&0o022 != 0 {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: fmt.Sprintf("TUF trust directory is writable by group/other (mode %04o)", dst.Mode().Perm()), Recommendation: "Remove group/other write access from the TUF trust directory and re-verify the pinned root against the offline trust source.", ActionID: "tuf.harden-trust-directory", RemediationMode: RemediationApproval}
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -183,6 +186,9 @@ func checkTUFRoot(path string, now time.Time) Check {
 	info, err := tufclient.ValidateTrustedRootIntegrity(b)
 	if err != nil {
 		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: "TUF bootstrap root signature threshold validation failed: " + err.Error(), Recommendation: "Disable network updates and restore a self-consistent, threshold-signed root.json from the authenticated offline trust source.", ActionID: "tuf.restore-root", RemediationMode: RemediationManual}
+	}
+	if st.Mode().Perm()&0o022 != 0 {
+		return Check{ID: "tuf-root", Status: "fail", Severity: "critical", Summary: fmt.Sprintf("signature-valid TUF bootstrap root is writable by group/other (mode %04o)", st.Mode().Perm()), Recommendation: "Remove group/other write permission; the compiled safe-auto repair may do this only after revalidating the root signature threshold.", ActionID: "tuf.harden-root-permissions", RemediationMode: RemediationSafeAuto}
 	}
 	if !info.Expires.After(now) {
 		return Check{ID: "tuf-root", Status: "warn", Severity: "warning", Summary: fmt.Sprintf("TUF root v%d is signature-valid but expired at %s", info.Version, info.Expires.Format(time.RFC3339)), Recommendation: "Allow only verified TUF root rotation to a newer root; do not replace the trust anchor from the network or bypass TUF verification.", ActionID: "tuf.rotate-root", RemediationMode: RemediationApproval}
