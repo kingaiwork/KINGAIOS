@@ -3,15 +3,15 @@
   "installer_vm": true,
   "desktop_live_vm": true,
   "server_bios_uefi_vm": true,
-  "ab_update_vm": false,
+  "ab_update_vm": true,
   "recovery_vm": true,
   "tuf_client": true,
   "secure_boot_vm": true,
   "tuf_repository": false,
   "production_signing_ready": false,
   "protected_branch": false,
-  "rollback_drill": false,
+  "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. A gate is changed to true only after the corresponding automated or operator-controlled verification has actually passed. Recovery/offline recovery, Microsoft-enrolled OVMF Secure Boot, and pinned-root TUF HTTPS client tamper rejection are verified. Production TUF repository keys/signing material and Cloudflare credentials are never represented by this file."
+  "notes": "Fail-closed. Verified gates include Server/Desktop boot foundations, installer, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and full A-to-B health confirmation followed by intentional failed A boot and automatic rollback to confirmed B. Production TUF repository keys/signing material, branch governance, and Cloudflare delivery credentials are never inferred from source code."
 }
