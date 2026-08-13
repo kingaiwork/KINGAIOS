@@ -1,0 +1,14 @@
+ubuntu-minimal
+systemd
+systemd-sysv
+ca-certificates
+util-linux
+cryptsetup
+gdisk
+e2fsprogs
+dosfstools
+grub-efi-amd64-bin
+grub2-common
+zstd
+linux-generic
+casper
