@@ -55,6 +55,24 @@ func healthyRoot(t *testing.T) string {
 	return root
 }
 
+func findCheck(t *testing.T, report Report, id string) Check {
+	t.Helper()
+	for _, c := range report.Checks { if c.ID == id { return c } }
+	t.Fatalf("check %q not found", id)
+	return Check{}
+}
+
+func tamperRootVersion(t *testing.T, path string) {
+	t.Helper()
+	b, err := os.ReadFile(path); if err != nil { t.Fatal(err) }
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil { t.Fatal(err) }
+	signed := doc["signed"].(map[string]any)
+	signed["version"] = float64(99)
+	tampered, _ := json.Marshal(doc)
+	if err := os.WriteFile(path, tampered, 0o644); err != nil { t.Fatal(err) }
+}
+
 func TestHealthyReportScores100(t *testing.T) {
 	root := healthyRoot(t)
 	r := Run(Options{Root: root, Now: func() time.Time { return time.Unix(1, 0) }})
@@ -71,6 +89,9 @@ func TestDaemonAndMalformedConfigBecomeCritical(t *testing.T) {
 	if r.Status != "critical" { t.Fatalf("status=%s, want critical", r.Status) }
 	if r.Score >= 60 { t.Fatalf("score=%d, expected critical risk penalty", r.Score) }
 	if len(r.NextActions) < 2 { t.Fatalf("expected remediation actions, got %v", r.NextActions) }
+	if c := findCheck(t, r, "daemon"); c.ActionID != "kingaid.recover" || c.RemediationMode != RemediationApproval {
+		t.Fatalf("daemon remediation classification is not approval-gated: %+v", c)
+	}
 }
 
 func TestPendingUpdateIsDegradedNotCritical(t *testing.T) {
@@ -85,34 +106,54 @@ func TestPendingUpdateIsDegradedNotCritical(t *testing.T) {
 	if r.Status != "degraded" || r.Score != 92 {
 		t.Fatalf("pending update should be visible and degraded but non-critical: status=%s score=%d", r.Status, r.Score)
 	}
-	found := false
-	for _, c := range r.Checks { if c.ID == "ab-state" && c.Status == "warn" { found = true } }
-	if !found { t.Fatal("missing A/B pending warning") }
+	c := findCheck(t, r, "ab-state")
+	if c.Status != "warn" || c.ActionID != "update.await-health" || c.RemediationMode != RemediationObserve {
+		t.Fatalf("pending update remediation classification is unsafe: %+v", c)
+	}
 }
 
 func TestTamperedTUFRootMakesReportCritical(t *testing.T) {
 	root := healthyRoot(t)
 	path := rooted(root, "/etc/kingai/update/root.json")
-	b, err := os.ReadFile(path); if err != nil { t.Fatal(err) }
-	var doc map[string]any
-	if err := json.Unmarshal(b, &doc); err != nil { t.Fatal(err) }
-	signed := doc["signed"].(map[string]any)
-	signed["version"] = float64(99)
-	tampered, _ := json.Marshal(doc)
-	if err := os.WriteFile(path, tampered, 0o644); err != nil { t.Fatal(err) }
+	tamperRootVersion(t, path)
 	r := Run(Options{Root: root})
 	if r.Status != "critical" { t.Fatalf("tampered trust root must be critical: %+v", r.Checks) }
-	found := false
-	for _, c := range r.Checks { if c.ID == "tuf-root" && c.Status == "fail" && c.Severity == "critical" { found = true } }
-	if !found { t.Fatal("tampered TUF root was not identified as a critical failure") }
+	c := findCheck(t, r, "tuf-root")
+	if c.Status != "fail" || c.Severity != "critical" || c.ActionID != "tuf.restore-root" || c.RemediationMode != RemediationManual {
+		t.Fatalf("tampered TUF root must remain manual/critical: %+v", c)
+	}
 }
 
-func TestWritableTUFRootMakesReportCritical(t *testing.T) {
+func TestSafeAutoHardensOnlySignatureValidTUFRoot(t *testing.T) {
 	root := healthyRoot(t)
 	path := rooted(root, "/etc/kingai/update/root.json")
 	if err := os.Chmod(path, 0o666); err != nil { t.Fatal(err) }
 	r := Run(Options{Root: root})
-	if r.Status != "critical" { t.Fatalf("writable trust root must be critical: %+v", r.Checks) }
+	c := findCheck(t, r, "tuf-root")
+	if r.Status != "critical" || c.ActionID != "tuf.harden-root-permissions" || c.RemediationMode != RemediationSafeAuto {
+		t.Fatalf("valid but writable TUF root should expose only safe permission hardening: %+v", c)
+	}
+	repairs := ApplySafeRepairs(root, r)
+	if len(repairs) != 1 || repairs[0].Status != "applied" { t.Fatalf("safe repair not applied: %+v", repairs) }
+	st, err := os.Stat(path); if err != nil { t.Fatal(err) }
+	if st.Mode().Perm()&0o022 != 0 { t.Fatalf("unsafe write bits remain after repair: %04o", st.Mode().Perm()) }
+	after := Run(Options{Root: root})
+	if after.Status != "healthy" { t.Fatalf("signature-valid root should recover after permission hardening: %+v", after.Checks) }
+}
+
+func TestSafeAutoNeverMasksTamperedWritableTUFRoot(t *testing.T) {
+	root := healthyRoot(t)
+	path := rooted(root, "/etc/kingai/update/root.json")
+	tamperRootVersion(t, path)
+	if err := os.Chmod(path, 0o666); err != nil { t.Fatal(err) }
+	r := Run(Options{Root: root})
+	c := findCheck(t, r, "tuf-root")
+	if c.ActionID != "tuf.restore-root" || c.RemediationMode != RemediationManual {
+		t.Fatalf("tampered root was incorrectly offered safe-auto repair: %+v", c)
+	}
+	if repairs := ApplySafeRepairs(root, r); len(repairs) != 0 { t.Fatalf("tampered root triggered automatic mutation: %+v", repairs) }
+	st, err := os.Stat(path); if err != nil { t.Fatal(err) }
+	if st.Mode().Perm() != 0o666 { t.Fatalf("tampered root permissions were unexpectedly changed: %04o", st.Mode().Perm()) }
 }
 
 func TestExpiredSignedTUFRootIsDegradedWithRotationAdvice(t *testing.T) {
@@ -121,9 +162,8 @@ func TestExpiredSignedTUFRootIsDegradedWithRotationAdvice(t *testing.T) {
 	writeTestFile(t, root, "/etc/kingai/update/root.json", signedRoot(t, now.Add(-time.Hour)))
 	r := Run(Options{Root: root, Now: func() time.Time { return now }})
 	if r.Status != "degraded" { t.Fatalf("expired but signature-valid root should be degraded, got %s", r.Status) }
-	found := false
-	for _, c := range r.Checks {
-		if c.ID == "tuf-root" && c.Status == "warn" && c.Recommendation != "" { found = true }
+	c := findCheck(t, r, "tuf-root")
+	if c.Status != "warn" || c.ActionID != "tuf.rotate-root" || c.RemediationMode != RemediationApproval || c.Recommendation == "" {
+		t.Fatalf("expired TUF root must request approval-gated rotation: %+v", c)
 	}
-	if !found { t.Fatal("expired TUF root warning/rotation guidance missing") }
 }
