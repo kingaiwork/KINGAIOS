@@ -14,14 +14,10 @@ var version = "0.1.0-dev"
 func main() {
 	if len(os.Args) < 2 { usage() }
 	switch os.Args[1] {
-	case "verify":
-		verify(os.Args[2:])
-	case "stage":
-		stage(os.Args[2:])
-	case "boot-health":
-		bootHealth(os.Args[2:])
-	default:
-		usage()
+	case "verify": verify(os.Args[2:])
+	case "stage": stage(os.Args[2:])
+	case "boot-health": bootHealth(os.Args[2:])
+	default: usage()
 	}
 }
 
@@ -44,9 +40,12 @@ func stage(args []string) {
 	targetVersion:=fs.String("target-version","","target VERSION_ID")
 	confirm:=fs.String("confirm","","must equal UPDATE:<exact target disk>")
 	_ = fs.Parse(args)
+	jsonOut:=os.Stdout
+	os.Stdout=os.Stderr
 	res,err:=kingupdate.ExecuteStage(kingupdate.ExecuteOptions{TargetDisk:*target,SourceRoot:*source,StateKey:*stateKey,TargetVersion:*targetVersion,Confirmation:*confirm})
+	os.Stdout=jsonOut
 	if err!=nil{fail(err)}
-	b,_:=json.MarshalIndent(res,"","  ");fmt.Println(string(b))
+	enc:=json.NewEncoder(os.Stdout);enc.SetIndent("","  ");_ = enc.Encode(res)
 }
 
 func bootHealth(args []string) {
