@@ -1,0 +1,157 @@
+name: KINGAI OS Desktop Installer VM Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'desktop/**'
+      - 'distro/packages/desktop.txt'
+      - 'distro/packages/installer-*.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - '.github/workflows/smoke-installer-desktop-vm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-desktop-installer-vm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install-desktop-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Install build installer and VM tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd \
+            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
+            grub-efi-amd64-bin grub2-common \
+            qemu-utils qemu-system-x86 ovmf jq
+      - name: Build CI installer binary
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+      - name: Build installable KINGAI Desktop root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
+      - name: Verify Desktop source and installer runtime
+        run: |
+          root=dist/rootfs-desktop-amd64
+          test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+          test "$(readlink "$root/etc/systemd/system/default.target")" = '/usr/lib/systemd/system/graphical.target'
+          test "$(readlink "$root/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/sddm.service'
+          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage; do
+            sudo chroot "$root" sh -c "command -v $tool >/dev/null"
+          done
+      - name: Add installed Desktop graphical readiness marker
+        shell: bash
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo tee "$root/usr/lib/systemd/system/kingai-desktop-installed-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI installed Desktop CI marker
+          Requires=sddm.service
+          After=sddm.service local-fs.target kingaid.service
+          Wants=kingaid.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'mountpoint -q /var/lib/kingai-state && test -e /dev/mapper/KINGAI_STATE && echo KINGAI_DESKTOP_INSTALLED_BOOT_OK > /dev/ttyS0'
+
+          [Install]
+          WantedBy=graphical.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/graphical.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-installed-smoke.service \
+            "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-installed-smoke.service"
+      - name: Create disposable Desktop NBD target
+        shell: bash
+        run: |
+          truncate -s 42G ci/desktop-installer-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/desktop-installer-test.raw
+          sudo udevadm settle
+          test "$(lsblk -dn -o TYPE /dev/nbd0)" = disk
+          head -c 64 /dev/urandom > ci/state.key
+          chmod 600 ci/state.key
+      - name: Execute gated Desktop installer
+        shell: bash
+        run: |
+          sudo env \
+            KINGAI_INSTALLER_ALLOW_WRITE=1 \
+            KINGAI_INSTALLER_CI=1 \
+            KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
+            ./ci/kingai-installer execute \
+              --target /dev/nbd0 \
+              --profile desktop \
+              --source-root "$PWD/dist/rootfs-desktop-amd64" \
+              --state-key "$PWD/ci/state.key" \
+              --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
+          jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "desktop"' ci/install-result.json >/dev/null
+      - name: Validate Desktop GPT A-B encrypted STATE and policy
+        shell: bash
+        run: |
+          sudo udevadm settle
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p1)" = KINGAI_EFI
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
+          sudo cryptsetup isLuks /dev/nbd0p4
+          mkdir -p ci/check-root ci/check-efi
+          sudo mount /dev/nbd0p2 ci/check-root
+          sudo mount /dev/nbd0p1 ci/check-efi
+          test "$(readlink ci/check-root/etc/systemd/system/default.target)" = '/usr/lib/systemd/system/graphical.target'
+          test "$(readlink ci/check-root/etc/systemd/system/display-manager.service)" = '/usr/lib/systemd/system/sddm.service'
+          test -f ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
+          test "$(readlink ci/check-root/etc/systemd/system/casper-md5check.service)" = '/dev/null'
+          test -f ci/check-root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json
+          test -f ci/check-root/usr/lib/kingai/kingai-welcome
+          test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
+          sudo umount ci/check-efi
+          sudo umount ci/check-root
+      - name: Disconnect Desktop installer target
+        run: |
+          sudo qemu-nbd --disconnect /dev/nbd0
+          sudo udevadm settle
+      - name: Boot installed Desktop disk with UEFI and encrypted STATE
+        shell: bash
+        run: |
+          codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
+          varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
+          cp "$varsfd" ci/OVMF_VARS.fd
+          set +e
+          timeout 300 qemu-system-x86_64 -machine q35 -m 4096 -smp 4 -vga virtio \
+            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd \
+            -drive file=ci/desktop-installer-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot -snapshot > ci/qemu-desktop-installed.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-desktop-installed.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_DESKTOP_INSTALLED_BOOT_OK' ci/qemu-desktop-installed.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-desktop-installed.log
+          if grep -Fq 'grub>' ci/qemu-desktop-installed.log; then
+            echo 'Installed Desktop dropped to GRUB prompt.' >&2
+            exit 1
+          fi
+          if grep -Eiq 'Failed to start.*casper|casper-md5check.+failed' ci/qemu-desktop-installed.log; then
+            echo 'Installed Desktop attempted a Live-only Casper service.' >&2
+            exit 1
+          fi
+      - name: Cleanup Desktop NBD
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
