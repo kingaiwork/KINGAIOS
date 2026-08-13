@@ -21,7 +21,7 @@ permissions:
 jobs:
   boot-desktop-amd64:
     runs-on: ubuntu-24.04
-    timeout-minutes: 80
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -31,7 +31,7 @@ jobs:
       - name: Install image and VM tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 ovmf
       - name: Build Desktop root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
       - name: Validate Desktop image contents
@@ -40,37 +40,90 @@ jobs:
           sudo test -x "$root/usr/lib/kingai/kingai-welcome"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
-          sudo chroot "$root" dpkg-query -W plasma-desktop plasma-workspace kwin-wayland sddm
+          sudo chroot "$root" dpkg-query -W \
+            plasma-desktop plasma-workspace kwin-wayland sddm \
+            ubuntu-minimal apt console-setup apport update-notifier-common \
+            ubuntu-release-upgrader-core libglib2.0-bin
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
+          test "$(readlink "$root/etc/systemd/system/default.target")" = '/usr/lib/systemd/system/graphical.target'
+          test "$(readlink "$root/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/sddm.service'
+      - name: Inject graphical readiness probe
+        shell: bash
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo tee "$root/usr/lib/systemd/system/kingai-desktop-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI Desktop CI graphical readiness marker
+          Requires=sddm.service
+          After=sddm.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'echo KINGAI_DESKTOP_GRAPHICAL_READY > /dev/ttyS0'
+
+          [Install]
+          WantedBy=graphical.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/graphical.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-smoke.service \
+            "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-smoke.service"
       - name: Build Desktop hybrid Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh desktop dist
-      - name: Validate ISO and manifest
+      - name: Validate ISO manifest SBOM and checksum
         run: |
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
           test -s "$iso"
           sha256sum -c "$iso.sha256"
-          python3 - "$iso.manifest.json" <<'PY'
+          test -s "$iso.spdx.json"
+          python3 - "$iso.manifest.json" "$iso.spdx.json" <<'PY'
           import json, sys
-          d=json.load(open(sys.argv[1]))
-          assert d['product']=='KINGAI OS'
-          assert d['profile']=='desktop'
-          assert d['installable'] is False
+          manifest=json.load(open(sys.argv[1]))
+          sbom=json.load(open(sys.argv[2]))
+          assert manifest['product']=='KINGAI OS'
+          assert manifest['profile']=='desktop'
+          assert manifest['installable'] is False
+          assert manifest['boot_mode']==['UEFI','BIOS']
+          assert sbom['spdxVersion']=='SPDX-2.3'
           PY
-      - name: QEMU Desktop boot smoke
+      - name: QEMU Desktop BIOS graphical boot smoke
         shell: bash
         run: |
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
           set +e
-          timeout 210 qemu-system-x86_64 -machine q35 -m 4096 -smp 4 -vga virtio \
-            -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-desktop.log 2>&1
+          timeout 240 qemu-system-x86_64 -machine q35 -m 4096 -smp 4 -vga virtio \
+            -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-desktop-bios.log 2>&1
           code=$?
           set -e
-          cat qemu-desktop.log
+          cat qemu-desktop-bios.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
-          grep -Eiq 'Linux version|casper|systemd|sddm|graphical.target' qemu-desktop.log
-          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop.log
-          if grep -Eiq "Failed to start casper-md5check|can't execute '/usr/sbin/install-keymap'|update-notifier/.+No such file|var/crash/crash.init.+No such file" qemu-desktop.log; then
-            echo 'Desktop live-session compatibility regression detected.' >&2
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop-bios.log
+          grep -Fq 'KINGAI_DESKTOP_GRAPHICAL_READY' qemu-desktop-bios.log
+          if grep -Eiq "Failed to start casper-md5check|chroot: can't execute|update-notifier/.+No such file|ubuntu-release-upgrader/.+No such file|var/crash/crash.init.+No such file" qemu-desktop-bios.log; then
+            echo 'Desktop BIOS live-session compatibility regression detected.' >&2
+            exit 1
+          fi
+      - name: QEMU Desktop UEFI graphical boot smoke
+        shell: bash
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
+          varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$codefd"
+          test -f "$varsfd"
+          cp "$varsfd" OVMF_VARS.fd
+          set +e
+          timeout 240 qemu-system-x86_64 -machine q35 -m 4096 -smp 4 -vga virtio \
+            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
+            -drive if=pflash,format=raw,file=OVMF_VARS.fd \
+            -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-desktop-uefi.log 2>&1
+          code=$?
+          set -e
+          cat qemu-desktop-uefi.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop-uefi.log
+          grep -Fq 'KINGAI_DESKTOP_GRAPHICAL_READY' qemu-desktop-uefi.log
+          if grep -Eiq "Failed to start casper-md5check|chroot: can't execute|update-notifier/.+No such file|ubuntu-release-upgrader/.+No such file|var/crash/crash.init.+No such file" qemu-desktop-uefi.log; then
+            echo 'Desktop UEFI live-session compatibility regression detected.' >&2
             exit 1
           fi
       - name: Report Desktop ISO routing
