@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "installer_vm": true,
+  "desktop_live_vm": true,
+  "server_bios_uefi_vm": true,
+  "ab_update_vm": false,
+  "recovery_vm": false,
+  "tuf_client": false,
+  "secure_boot_vm": false,
+  "tuf_repository": false,
+  "production_signing_ready": false,
+  "protected_branch": false,
+  "rollback_drill": false,
+  "recovery_drill": false,
+  "r2_delivery": false,
+  "notes": "Fail-closed. A gate is changed to true only after the corresponding automated or operator-controlled verification has actually passed. Production keys and Cloudflare credentials are never represented by this file."
+}
