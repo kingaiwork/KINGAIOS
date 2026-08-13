@@ -50,7 +50,7 @@ jobs:
               if key not in {'schema', 'notes'}:
                   assert isinstance(value, bool), (key, value)
           PY
-      - name: Test commit-aware release evidence freshness
+      - name: Test release control regressions
         run: bash scripts/test-release-gate-freshness.sh
       - name: Check required files
         run: |
@@ -73,6 +73,9 @@ jobs:
           test -f scripts/build-iot-image.sh
           test -f scripts/check-release-gate-freshness.sh
           test -f scripts/test-release-gate-freshness.sh
+          test -f scripts/release-base-version.sh
+          test -f scripts/test-release-base-version.sh
+          test -f tools/ci/make-tuf-root/main.go
           test -f update/README.md
           test -f installer/README.md
           test -f iot/README.md
@@ -109,36 +112,13 @@ jobs:
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"service.restart"}' http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
 
           diag="$tmp/diagroot"
-          mkdir -p "$diag/etc/kingai/update" "$diag/var/lib/kingai-state/kingai/update" ci/tmp
+          mkdir -p "$diag/etc/kingai/update" "$diag/var/lib/kingai-state/kingai/update"
           printf 'NAME="KINGAI OS"\nID=kingai\n' > "$diag/etc/os-release"
           cp configs/policy.json "$diag/etc/kingai/policy.json"
           cp configs/system.json "$diag/etc/kingai/system.json"
           cp configs/agents.json "$diag/etc/kingai/agents.json"
           cp configs/models.json "$diag/etc/kingai/models.json"
-          cat > ci/tmp/make-tuf-root.go <<'EOF'
-          package main
-          import (
-            "crypto"
-            "crypto/ed25519"
-            "os"
-            "time"
-            "github.com/sigstore/sigstore/pkg/signature"
-            "github.com/theupdateframework/go-tuf/v2/metadata"
-          )
-          func main() {
-            if len(os.Args) != 2 { panic("root output path required") }
-            root := metadata.Root(time.Now().UTC().Add(365*24*time.Hour))
-            _, private, err := ed25519.GenerateKey(nil); if err != nil { panic(err) }
-            key, err := metadata.KeyFromPublicKey(private.Public()); if err != nil { panic(err) }
-            if err := root.Signed.AddKey(key, metadata.ROOT); err != nil { panic(err) }
-            signer, err := signature.LoadSigner(private, crypto.Hash(0)); if err != nil { panic(err) }
-            if _, err := root.Sign(signer); err != nil { panic(err) }
-            if err := root.ToFile(os.Args[1], false); err != nil { panic(err) }
-            if err := os.Chmod(os.Args[1], 0644); err != nil { panic(err) }
-          }
-          EOF
-          go run ./ci/tmp/make-tuf-root.go "$diag/etc/kingai/update/root.json"
-          rm -rf ci/tmp
+          go run ./tools/ci/make-tuf-root --output "$diag/etc/kingai/update/root.json" --mode 0644
           cat > "$diag/var/lib/kingai-state/kingai/update/slots.json" <<'EOF'
           {"active_slot":"A","active_version":"0.1.0-ci","boot_attempts":0,"max_boot_attempts":3,"confirmed":true,"rollback_required":false,"updated_at":"2026-01-01T00:00:00Z"}
           EOF
@@ -165,7 +145,7 @@ jobs:
           assert checks['daemon']['status'] == 'pass'
           assert checks['ab-state']['status'] == 'pass'
           assert checks['tuf-root']['status'] == 'pass'
-          assert 'threshold' in checks['tuf-root']['summary']
+          assert 'threshold 2' in checks['tuf-root']['summary']
           cli_status = json.loads((root/'cli-status.json').read_text())
           assert cli_status['name'] == 'KINGAI OS'
           PY
