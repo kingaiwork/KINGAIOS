@@ -7,7 +7,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/theupdateframework/go-tuf/v2/metadata"
 	"github.com/theupdateframework/go-tuf/v2/metadata/config"
 	"github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
@@ -17,6 +19,47 @@ type Config struct {
 	TargetsURL      string
 	TrustedRootPath string
 	StateDir        string
+}
+
+type RootInfo struct {
+	Version   int64     `json:"version"`
+	Expires   time.Time `json:"expires"`
+	Threshold int       `json:"threshold"`
+	KeyCount  int       `json:"key_count"`
+}
+
+// ValidateTrustedRootIntegrity parses pinned root metadata and verifies that it
+// is actually authorized by its own root role threshold. Expiration is returned
+// to the caller instead of being rejected here: TUF intentionally allows an
+// expired initial root to bootstrap a verified root rotation before freshness is
+// enforced against the final root during timestamp processing.
+func ValidateTrustedRootIntegrity(data []byte) (RootInfo, error) {
+	if len(data) < 128 {
+		return RootInfo{}, errors.New("trusted TUF root is unexpectedly small")
+	}
+	root, err := metadata.Root().FromBytes(data)
+	if err != nil {
+		return RootInfo{}, fmt.Errorf("parse trusted TUF root: %w", err)
+	}
+	if root.Signed.Type != metadata.ROOT {
+		return RootInfo{}, fmt.Errorf("trusted metadata type is %q, expected root", root.Signed.Type)
+	}
+	role, ok := root.Signed.Roles[metadata.ROOT]
+	if !ok || role == nil {
+		return RootInfo{}, errors.New("trusted TUF root does not define the root role")
+	}
+	if role.Threshold < 1 {
+		return RootInfo{}, errors.New("trusted TUF root has an invalid signing threshold")
+	}
+	if err := root.VerifyDelegate(metadata.ROOT, root); err != nil {
+		return RootInfo{}, fmt.Errorf("verify trusted TUF root self-signature threshold: %w", err)
+	}
+	return RootInfo{
+		Version:   root.Signed.Version,
+		Expires:   root.Signed.Expires.UTC(),
+		Threshold: role.Threshold,
+		KeyCount:  len(root.Signed.Keys),
+	}, nil
 }
 
 // Fetch verifies the complete TUF metadata chain from a trusted root that must
@@ -37,7 +80,9 @@ func fetch(cfg Config, target string, testHTTPClient *http.Client) (string, erro
 	if cfg.TrustedRootPath == "" || cfg.StateDir == "" { return "", errors.New("trusted root path and TUF state directory are required") }
 	rootBytes, err := os.ReadFile(cfg.TrustedRootPath)
 	if err != nil { return "", fmt.Errorf("read trusted TUF root: %w", err) }
-	if len(rootBytes) < 128 { return "", errors.New("trusted TUF root is unexpectedly small") }
+	if _, err := ValidateTrustedRootIntegrity(rootBytes); err != nil {
+		return "", err
+	}
 	metadataDir := filepath.Join(cfg.StateDir, "metadata")
 	targetsDir := filepath.Join(cfg.StateDir, "targets")
 	if err := os.MkdirAll(metadataDir, 0o700); err != nil { return "", err }
