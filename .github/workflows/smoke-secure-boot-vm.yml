@@ -4,9 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'internal/installer/uefi.go'
+      - 'cmd/kingai-installer/**'
       - 'internal/installer/**'
+      - 'internal/update/**'
+      - 'distro/packages/server.txt'
       - 'distro/packages/installer-amd64.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/overlay/**'
+      - 'systemd/kingai-update-health.service'
       - 'scripts/build-rootfs.sh'
       - 'go.mod'
       - 'go.sum'
