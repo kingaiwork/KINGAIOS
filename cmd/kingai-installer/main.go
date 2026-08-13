@@ -77,8 +77,8 @@ func execute(args []string) {
 	confirm := fs.String("confirm", "", "must exactly equal ERASE:/dev/DEVICE")
 	_ = fs.Parse(args)
 
-	// Keep stdout machine-readable. The installer and the UEFI finalizer emit
-	// destructive-operation diagnostics to stderr; only the final result is JSON.
+	// Keep stdout machine-readable. Destructive-operation diagnostics are sent
+	// to stderr; only the final install result is serialized to stdout.
 	jsonOut := os.Stdout
 	os.Stdout = os.Stderr
 	res, err := installer.Execute(installer.ExecuteOptions{
@@ -88,6 +88,9 @@ func execute(args []string) {
 		StateKey:     *stateKey,
 		Confirmation: *confirm,
 	})
+	if err == nil {
+		err = installer.FinalizeInstalledSystem(res)
+	}
 	if err == nil {
 		err = installer.FinalizeUEFIBoot(res)
 	}
