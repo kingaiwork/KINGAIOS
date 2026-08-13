@@ -1,3 +1,4 @@
+ubuntu-minimal
 systemd
 systemd-sysv
 systemd-resolved
@@ -8,6 +9,12 @@ nftables
 dbus
 sudo
 util-linux
+apt
+console-setup
+apport
+update-notifier-common
+ubuntu-release-upgrader-core
+libglib2.0-bin
 network-manager
 plasma-desktop
 plasma-workspace
