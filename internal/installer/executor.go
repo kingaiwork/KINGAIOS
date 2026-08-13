@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	kingupdate "github.com/kingaiwork/KINGAIOS/internal/update"
 )
 
 type ExecuteOptions struct {
@@ -123,7 +125,7 @@ func validateExecutionInputs(opts ExecuteOptions) error {
 	if keyInfo.Mode().Perm()&0o077 != 0 {
 		return errors.New("state key permissions must not grant group/other access")
 	}
-	for _, tool := range []string{"sgdisk", "partprobe", "udevadm", "wipefs", "mkfs.vfat", "mkfs.ext4", "cryptsetup", "rsync", "mount", "umount", "blkid", "grub-install", "sync"} {
+	for _, tool := range []string{"sgdisk", "partprobe", "udevadm", "wipefs", "mkfs.vfat", "mkfs.ext4", "cryptsetup", "rsync", "mount", "umount", "blkid", "grub-install", "grub-editenv", "sync"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			return fmt.Errorf("required installer tool missing: %s", tool)
 		}
@@ -266,13 +268,13 @@ func executePlan(r commandRunner, plan Plan, opts ExecuteOptions) (res InstallRe
 	if err := os.MkdirAll(filepath.Join(stateMnt, "kingai/update"), 0o700); err != nil {
 		return res, err
 	}
-	slotState := map[string]any{"schema": 1, "active_slot": "A", "active_version": installedVersion(rootA), "confirmed": true, "boot_attempts": 0, "max_boot_attempts": 3, "updated_at": time.Now().UTC()}
+	slotState := map[string]any{"schema": 1, "active_slot": "A", "active_version": installedVersion(rootA), "confirmed": true, "boot_attempts": 0, "max_boot_attempts": 3, "rollback_required": false, "updated_at": time.Now().UTC()}
 	sb, _ := json.MarshalIndent(slotState, "", "  ")
 	if err := os.WriteFile(filepath.Join(stateMnt, "kingai/update/slots.json"), append(sb, '\n'), 0o600); err != nil {
 		return res, err
 	}
 
-	if err := installGRUB(r, rootA, aUUID); err != nil {
+	if err := installGRUB(r, rootA, rootB, aUUID, bUUID); err != nil {
 		return res, err
 	}
 	if err := r.Run("sync"); err != nil {
@@ -322,42 +324,24 @@ func writeInstalledConfig(root, rootUUID, efiUUID, luksUUID string, persistKey b
 	return nil
 }
 
-func installGRUB(r commandRunner, rootA, rootUUID string) error {
+func installGRUB(r commandRunner, rootA, rootB, rootAUUID, rootBUUID string) error {
 	efi := filepath.Join(rootA, "boot/efi")
 	if err := r.Run("grub-install", "--target=x86_64-efi", "--efi-directory="+efi, "--boot-directory="+filepath.Join(rootA, "boot"), "--removable", "--no-nvram"); err != nil {
 		return err
 	}
-	kernel, err := newestGlob(filepath.Join(rootA, "boot/vmlinuz-*"))
-	if err != nil {
-		return err
+	controller := kingupdate.BootController{
+		RootAPath: rootA,
+		RootBPath: rootB,
+		RootAUUID: rootAUUID,
+		RootBUUID: rootBUUID,
 	}
-	initrd, err := newestGlob(filepath.Join(rootA, "boot/initrd.img-*"))
-	if err != nil {
-		return err
+	if err := controller.WriteConfig(); err != nil {
+		return fmt.Errorf("write A/B boot controller: %w", err)
 	}
-	grubDir := filepath.Join(rootA, "boot/grub")
-	if err := os.MkdirAll(grubDir, 0o755); err != nil {
-		return err
+	if err := kingupdate.ConfirmBoot(rootA, kingupdate.SlotA); err != nil {
+		return fmt.Errorf("initialize A/B grub environment: %w", err)
 	}
-	cfg := fmt.Sprintf("set timeout=2\nset default=0\nmenuentry 'KINGAI OS — Slot A' {\n search --no-floppy --fs-uuid --set=root %s\n linux /boot/%s root=UUID=%s ro console=tty0 console=ttyS0,115200n8\n initrd /boot/%s\n}\n", rootUUID, filepath.Base(kernel), rootUUID, filepath.Base(initrd))
-	return os.WriteFile(filepath.Join(grubDir, "grub.cfg"), []byte(cfg), 0o644)
-}
-
-func newestGlob(pattern string) (string, error) {
-	m, err := filepath.Glob(pattern)
-	if err != nil {
-		return "", err
-	}
-	if len(m) == 0 {
-		return "", fmt.Errorf("no files match %s", pattern)
-	}
-	best := m[0]
-	for _, p := range m[1:] {
-		if p > best {
-			best = p
-		}
-	}
-	return best, nil
+	return nil
 }
 
 func installedVersion(root string) string {
