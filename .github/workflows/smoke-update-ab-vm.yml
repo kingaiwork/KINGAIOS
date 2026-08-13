@@ -78,7 +78,7 @@ jobs:
           grep -q 'menuentry.*Slot B' ci/check-a/boot/grub/grub.cfg
           sudo grub-editenv ci/check-a/boot/grub/grubenv list | tee ci/grubenv-stage-v2.txt
           grep -q '^kingai_pending=B$' ci/grubenv-stage-v2.txt
-          grep -q '"pending_slot": "B"' ci/check-state/kingai/update/slots.json
+          sudo grep -q '"pending_slot": "B"' ci/check-state/kingai/update/slots.json
           sudo umount ci/check-state ci/check-a; sudo cryptsetup close KINGAI_STATE_CHECK
       - name: Disconnect NBD and boot pending B to health confirmation
         shell: bash
@@ -96,7 +96,7 @@ jobs:
           sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/update-test.raw; sudo udevadm settle
           sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_CHECK
           sudo mkdir -p ci/check-state; sudo mount /dev/mapper/KINGAI_STATE_CHECK ci/check-state
-          jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == ""' ci/check-state/kingai/update/slots.json >/dev/null
+          sudo jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == ""' ci/check-state/kingai/update/slots.json >/dev/null
           sudo umount ci/check-state; sudo cryptsetup close KINGAI_STATE_CHECK
           sudo cp -a dist/rootfs-server-amd64 ci/root-v3-fail
           sudo sed -i 's/^VERSION_ID=.*/VERSION_ID="0.1.2-ci"/' ci/root-v3-fail/usr/lib/os-release
@@ -139,7 +139,7 @@ jobs:
           sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/update-test.raw; sudo udevadm settle
           sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_CHECK
           sudo mkdir -p ci/check-state ci/check-a; sudo mount /dev/mapper/KINGAI_STATE_CHECK ci/check-state; sudo mount /dev/nbd0p2 ci/check-a
-          jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == "" and .rollback_required == false' ci/check-state/kingai/update/slots.json >/dev/null
+          sudo jq -e '.active_slot == "B" and .confirmed == true and (.pending_slot // "") == "" and .rollback_required == false' ci/check-state/kingai/update/slots.json >/dev/null
           sudo grub-editenv ci/check-a/boot/grub/grubenv list | tee ci/grubenv-final.txt
           grep -q '^kingai_active=B$' ci/grubenv-final.txt
           if grep -q '^kingai_pending=' ci/grubenv-final.txt; then exit 1; fi
