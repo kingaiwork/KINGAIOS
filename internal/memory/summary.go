@@ -10,7 +10,7 @@ import (
 )
 
 // Summary is metadata-only. It is intended for trusted local UI surfaces that
-// need to explain Memory state without receiving record Data.
+// need to explain Memory state without receiving record payloads.
 type Summary struct {
 	Total         int            `json:"total"`
 	ByLayer       map[string]int `json:"by_layer"`
@@ -27,8 +27,8 @@ type summaryRecord struct {
 }
 
 // Summarize scans one owner namespace and counts only non-expired metadata.
-// JSON Data is intentionally not represented in summaryRecord and therefore
-// cannot be returned by this API.
+// Record payloads are intentionally not represented in summaryRecord and
+// therefore cannot be returned by this API.
 func (s FileStore) Summarize(owner string) (Summary, error) {
 	if !safe(owner) {
 		return Summary{}, errors.New("invalid owner")
