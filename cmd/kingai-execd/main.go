@@ -25,7 +25,7 @@ type peerKey struct{}
 func main() {
 	socket := getenv("KINGAI_EXECD_SOCKET", "/run/kingai-execd/execd.sock")
 	allowedUser := getenv("KINGAI_EXECD_ALLOWED_USER", "_kingai")
-	auditPath := getenv("KINGAI_EXECD_AUDIT", "/var/log/kingai/execd-audit.jsonl")
+	auditPath := getenv("KINGAI_EXECD_AUDIT", "/var/log/kingai-execd/audit.jsonl")
 	allowedUID, err := lookupUID(allowedUser)
 	if err != nil { log.Fatalf("resolve allowed caller: %v", err) }
 
@@ -33,7 +33,9 @@ func main() {
 	if err := (executor.NativeHandlers{}).Register(broker); err != nil { log.Fatal(err) }
 
 	if !filepath.IsAbs(socket) { log.Fatal("KINGAI_EXECD_SOCKET must be absolute") }
-	if err := os.MkdirAll(filepath.Dir(socket), 0o750); err != nil { log.Fatal(err) }
+	dir := filepath.Dir(socket)
+	if err := os.MkdirAll(dir, 0o711); err != nil { log.Fatal(err) }
+	if err := os.Chmod(dir, 0o711); err != nil { log.Fatal(err) }
 	_ = os.Remove(socket)
 	ln, err := net.Listen("unix", socket)
 	if err != nil { log.Fatal(err) }
@@ -61,10 +63,6 @@ func main() {
 		if execErr != nil && reason == "" { reason = execErr.Error() }
 		if err := audit.Append(auditPath, audit.Event{Type: "execution.run", Agent: req.Agent, Capability: req.Capability, Allowed: execErr == nil && result.OK, PeerUID: uid, TargetHash: audit.HashTarget(req.Target), Reason: reason}); err != nil {
 			log.Printf("execution audit append failed: %v", err)
-		}
-		if execErr != nil {
-			writeJSON(w, http.StatusOK, result)
-			return
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
