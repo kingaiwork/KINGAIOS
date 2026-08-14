@@ -29,18 +29,19 @@ const (
 )
 
 type Step struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	Capability   string   `json:"capability,omitempty"`
-	DependsOn    []string `json:"depends_on,omitempty"`
-	ApprovalID   string   `json:"approval_id,omitempty"`
-	Status       Status   `json:"status"`
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Capability string   `json:"capability,omitempty"`
+	DependsOn  []string `json:"depends_on,omitempty"`
+	ApprovalID string   `json:"approval_id,omitempty"`
+	Status     Status   `json:"status"`
 }
 
 type Task struct {
 	ID        string          `json:"id"`
 	Goal      string          `json:"goal"`
 	Agent     string          `json:"agent"`
+	PeerUID   uint32          `json:"peer_uid"`
 	Status    Status          `json:"status"`
 	Steps     []Step          `json:"steps,omitempty"`
 	Result    json.RawMessage `json:"result,omitempty"`
@@ -51,7 +52,7 @@ type Task struct {
 
 type Store struct{ Root string }
 
-func (s Store) Create(goal, agent string, steps []Step) (Task, error) {
+func (s Store) Create(goal, agent string, peerUID uint32, steps []Step) (Task, error) {
 	goal = strings.TrimSpace(goal)
 	agent = strings.TrimSpace(agent)
 	if goal == "" || agent == "" {
@@ -83,7 +84,7 @@ func (s Store) Create(goal, agent string, steps []Step) (Task, error) {
 		}
 	}
 	now := time.Now().UTC()
-	t := Task{ID: id, Goal: goal, Agent: agent, Status: StatusCreated, Steps: steps, CreatedAt: now, UpdatedAt: now}
+	t := Task{ID: id, Goal: goal, Agent: agent, PeerUID: peerUID, Status: StatusCreated, Steps: steps, CreatedAt: now, UpdatedAt: now}
 	if err := s.write(t); err != nil {
 		return Task{}, err
 	}
@@ -105,7 +106,7 @@ func (s Store) Get(id string) (Task, error) {
 	return t, nil
 }
 
-func (s Store) List(limit int) ([]Task, error) {
+func (s Store) ListForPeer(peerUID uint32, limit int) ([]Task, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
@@ -126,6 +127,9 @@ func (s Store) List(limit int) ([]Task, error) {
 		if err != nil {
 			return nil, err
 		}
+		if peerUID != 0 && t.PeerUID != peerUID {
+			continue
+		}
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
@@ -135,10 +139,13 @@ func (s Store) List(limit int) ([]Task, error) {
 	return out, nil
 }
 
-func (s Store) Transition(id string, next Status, result json.RawMessage, failure string) (Task, error) {
+func (s Store) TransitionForPeer(id string, peerUID uint32, next Status, result json.RawMessage, failure string) (Task, error) {
 	t, err := s.Get(id)
 	if err != nil {
 		return Task{}, err
+	}
+	if peerUID != 0 && t.PeerUID != peerUID {
+		return Task{}, errors.New("task owner mismatch")
 	}
 	if !canTransition(t.Status, next) {
 		return Task{}, fmt.Errorf("invalid task transition: %s -> %s", t.Status, next)
@@ -158,10 +165,13 @@ func (s Store) Transition(id string, next Status, result json.RawMessage, failur
 	return t, nil
 }
 
-func (s Store) SetStepApproval(id, stepID, approvalID string) (Task, error) {
+func (s Store) SetStepApprovalForPeer(id string, peerUID uint32, stepID, approvalID string) (Task, error) {
 	t, err := s.Get(id)
 	if err != nil {
 		return Task{}, err
+	}
+	if peerUID != 0 && t.PeerUID != peerUID {
+		return Task{}, errors.New("task owner mismatch")
 	}
 	found := false
 	for i := range t.Steps {
