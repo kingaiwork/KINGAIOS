@@ -1,119 +1,337 @@
 # KINGAI OS Roadmap
 
-## English
+**Revision:** 2026-08-14  
+**Current line:** D5 Alpha Runtime Foundation / Pre-Alpha
 
-This roadmap prioritizes a reliable release system before feature volume.
+KINGAI OS uses one shared intelligence/governance/runtime core across four official distribution forms:
 
-### Phase 0 — D4 Developer Foundation
+1. **KINGAI OS Server** — servers, VPS, AI nodes and enterprise automation;
+2. **KINGAI OS Desktop** — personal computers and workstations;
+3. **KINGAI OS IoT / Edge** — embedded, gateways, robotics and edge intelligence;
+4. **KINGAI OS Container** — Docker/OCI deployments for cloud, CI, homelab and service composition.
+
+The project is gate-driven: a feature is not considered production-ready merely because source code exists.
+
+## Phase 0 — D4 Developer Foundation — substantially complete
+
+Foundation work established:
 
 - repository architecture and policy baseline;
-- Server/Desktop/IoT profiles;
-- first image-build pipeline;
-- model-neutral interfaces;
-- agent capability model;
-- legal/license inventory;
-- SBOM/provenance skeleton;
-- R2 large-artifact publishing path;
-- security disclosure process;
-- desktop experience specification.
-
-### Phase 1 — 0.1 Developer Image
-
-- bootable Server developer image;
-- `kingai` CLI and `kingaid` skeleton;
-- system health reporting;
-- local policy file and capability evaluator;
-- provider adapter interface;
+- Server / Desktop / IoT profiles;
+- Ubuntu 26.04-based rootfs/image pipelines;
+- `kingai`, `kingaid`, installer, updater and recovery foundations;
+- model-neutral routing interfaces;
 - local memory store;
-- CI checks for package licenses and image size;
-- signed checksum generation.
+- agent identity and capability policy;
+- audit logging;
+- SPDX SBOM and package inventory;
+- release gate ledger;
+- installer, recovery, A/B update, TUF and Secure Boot VM test tracks;
+- Plasma 6 Desktop Core and three desktop experiences.
 
-### Phase 2 — 0.3 Agent Runtime
+## Phase 1 — D5 Runtime Foundation — current
 
-- isolated execution broker;
-- AppArmor/seccomp/Landlock profiles;
-- rootless container backend;
-- OpenClaw/MCP/Codex adapter contracts;
-- audit log and task lifecycle;
-- first local/cloud model routing policy.
+Goal: connect the isolated foundations into one governed local intelligence runtime.
 
-### Phase 3 — 0.5 Desktop Alpha
+### Completed in the current D5 line
+
+- Approval Broker persistence;
+- approval expiry and one-time consumption;
+- Agent + Capability + Target Hash + Peer UID binding;
+- Task Graph persistence and state machine;
+- peer-isolated Task ownership;
+- Memory Store wired into `kingaid`;
+- Model Router wired into `kingaid`;
+- CLI commands for Approval / Memory / Model / Task;
+- D5 runtime status reporting;
+- Docker/OCI Container profile and image build path;
+- Container runtime smoke test in CI;
+- Server/Desktop/IoT profiles aligned to the shared D5 runtime.
+
+### Remaining before D5 Runtime Alpha can be called feature-complete
+
+- constrained Execution Broker with no generic unrestricted root shell;
+- production-quality sandbox profiles using AppArmor/seccomp/Landlock/cgroup controls;
+- Planner and Task Step scheduler;
+- capability-scoped execution result model;
+- OpenClaw adapter;
+- MCP adapter;
+- Codex-compatible tool adapter;
+- browser execution adapter;
+- provider adapters and model health probes;
+- richer Memory metadata, retrieval and promotion;
+- end-to-end execution fault injection.
+
+## Phase 2 — 0.3 Agent Runtime Alpha
+
+Target: a usable local Agent Runtime where real tasks can move through a controlled lifecycle.
+
+```text
+Goal
+ -> Plan
+ -> Task Graph
+ -> Capability Policy
+ -> Approval when required
+ -> Constrained Executor
+ -> Result
+ -> Audit
+ -> Memory
+```
+
+Required gates:
+
+- no arbitrary privileged shell interface;
+- capability-specific executor handlers;
+- sandbox and resource limits;
+- task cancellation and timeout;
+- execution provenance;
+- adapter health and lifecycle management;
+- failure-safe policy defaults;
+- runtime integration tests on Server, Desktop and Container.
+
+## Phase 3 — 0.5 Desktop Alpha
+
+Desktop is the **personal-computer edition**; there is no separate PC profile.
+
+Target experience:
 
 - KINGAI Welcome first-run setup;
-- live preview desktop selector;
-- KINGAI Intelligence / Flow / Classic profiles;
-- KINGAI Agent panel;
-- model manager;
-- memory/privacy controls;
-- settings integration.
+- KINGAI Intelligence / Flow / Classic switching;
+- Agent Center;
+- Task Center;
+- Approval Center;
+- Memory Center;
+- Model Center;
+- Privacy controls;
+- local automation controls;
+- device and update status;
+- system health intelligence;
+- native notifications for approval and task state.
 
-### Phase 4 — 0.7 Update & Trust
+Desktop remains one shared Plasma 6 / Wayland core rather than multiple divergent desktop distributions.
 
+## Phase 4 — 0.6 Server / Container Alpha
+
+### Server
+
+- headless agent orchestration;
+- service health and automation;
+- rootless execution backends;
+- server policy templates;
+- SSH/cloud-init deployment flows;
+- optional local model service;
+- fleet enrollment foundation.
+
+### Container
+
+- amd64/arm64 Docker/OCI images;
+- non-root daemon by default;
+- persistent state volumes;
+- Unix-socket local management;
+- Kubernetes-compatible runtime pattern without making Kubernetes mandatory;
+- Compose examples;
+- GHCR developer publishing workflow;
+- SBOM/provenance for container artifacts;
+- health/readiness behavior.
+
+Container is an execution form of KINGAI OS Runtime, not a replacement for the bootable Server/Desktop/IoT operating-system editions.
+
+## Phase 5 — 0.7 IoT / Edge Alpha
+
+- generic amd64/arm64 Edge runtime;
+- Device Pack contract;
+- hardware identity;
+- offline/local-first model modes;
+- constrained device capabilities;
+- OTA update policy;
+- recovery behavior;
+- Raspberry Pi validated pack;
+- Jetson validated pack;
+- selected industrial x86/ARM pack;
+- telemetry with explicit privacy policy.
+
+A generic image does not become “hardware-supported” until its Device Pack is boot-validated on that hardware family.
+
+## Phase 6 — 0.8 Trust, Update and Fleet Beta
+
+- production TUF repository layout;
+- threshold-key operations;
+- offline release-key custody procedure;
+- production Secure Boot signing track;
+- TPM-backed identity where available;
 - signed update metadata;
-- TUF repository layout;
-- A/B or equivalent atomic rollback prototype;
-- Secure Boot/TPM integration track;
+- A/B or equivalent atomic update semantics;
+- automatic rollback health gates;
 - recovery environment;
-- update failure injection tests.
+- controlled fleet update rollout;
+- Cloudflare/R2 or replaceable artifact delivery backend;
+- update failure injection at scale.
 
-### Phase 5 — 0.9 Release Candidate
+Cloud remains an accelerator and management option, not a survival dependency for local KINGAI runtimes.
+
+## Phase 7 — 0.9 Release Candidate
+
+Before RC:
 
 - clean-install validation;
-- upgrade/rollback validation;
-- SBOM and provenance on every image;
+- upgrade and rollback validation;
+- recovery validation;
+- SBOM and provenance for every official artifact type;
 - corresponding-source publication workflow;
-- CVE/security advisory process;
-- release signing ceremony/documentation;
-- privacy/export/delete controls;
-- public documentation and hardware matrix.
+- vulnerability/CVE automation;
+- security advisory process;
+- release signing ceremony and documentation;
+- privacy export/delete controls;
+- public hardware compatibility matrix;
+- protected branch/release governance;
+- release artifact delivery validation;
+- legal and license review.
 
-### Phase 6 — 1.0 Stable
+## Phase 8 — 1.0 Stable
 
-Stable is released only after security, legal, licensing, upgrade, rollback, recovery and reproducibility gates are satisfied.
+Stable is released only when required security, licensing, update, rollback, recovery, signing, reproducibility and governance gates are satisfied.
 
-### After 1.0
+Planned stable artifact families:
 
-- ARM64 Desktop when hardware validation is sufficient;
-- IoT hardware packs;
-- distributed fleet management;
+```text
+KINGAI-OS-Server-<version>-amd64.iso
+KINGAI-OS-Desktop-<version>-amd64.iso
+KINGAI-OS-IoT-<version>-<arch>.img.xz
+OCI: ghcr.io/kingaiwork/kingai-os:<version>
+```
+
+Additional architectures are published only after their own validation gates pass.
+
+## After 1.0
+
+- ARM64 Desktop when real hardware validation is sufficient;
+- more IoT/Edge Device Packs;
 - organization memory and policy federation;
+- distributed fleet management;
 - optional remote attestation;
-- agent marketplace with signed manifests;
-- advanced scheduling and hardware acceleration;
-- enterprise support lifecycle.
+- signed Agent Marketplace manifests;
+- advanced scheduling;
+- GPU/NPU acceleration policy;
+- enterprise support lifecycle;
+- multi-node cooperative intelligence;
+- controlled evolution pipelines with staged verification and rollback.
 
 ---
 
-## 中文
+# 中文路线图
 
-本路线图首先保证“能长期安全发行”，再追求功能数量。
+KINGAI OS 正式统一为四种发行形态，共享同一套核心：
 
-### 阶段 0 — D4 Developer Foundation
+```text
+KINGAI Core
+├── Intelligence
+├── Agent Runtime
+├── Policy / Approval
+├── Task Graph
+├── Memory Fabric
+├── Model Fabric
+├── Audit
+├── Update / Recovery
+└── Security
+        │
+        ├── Server
+        ├── Desktop（个人电脑）
+        ├── IoT / Edge
+        └── Container（Docker / OCI）
+```
 
-完成仓库架构、三个发行 Profile、镜像构建骨架、模型抽象、Agent 权限、许可证/SBOM、R2 大文件发布、安全流程与桌面规范。
+## 当前阶段：D5 Alpha Runtime Foundation
 
-### 阶段 1 — 0.1 Developer Image
+当前重点已经从“把系统做出来”转向“把智能运行闭环接起来”。
 
-完成可启动 Server 开发镜像、`kingai` CLI、`kingaid`、系统健康、基础 Policy、模型 Provider 接口、本地 Memory、镜像体积与许可证 CI、签名校验文件。
+已完成的 D5 基础：
 
-### 阶段 2 — 0.3 Agent Runtime
+- Approval Broker；
+- 一次性审批凭证；
+- Task Graph；
+- Memory 接入核心守护进程；
+- Model Router 接入核心守护进程；
+- CLI 管理入口；
+- Server/Desktop/IoT Profile 对齐；
+- Docker/OCI Container Profile；
+- Container Dockerfile 与 Buildx 构建脚本；
+- Container CI 启动与运行时 Smoke Test。
 
-完成执行 Broker、AppArmor/seccomp/Landlock、Rootless Container、OpenClaw/MCP/Codex 适配接口、审计和基础模型路由。
+## Desktop 就是个人电脑版本
 
-### 阶段 3 — 0.5 Desktop Alpha
+不会另外维护 PC Profile。
 
-完成 KINGAI Welcome、三个桌面实时预览与切换、Agent Panel、模型管理、Memory/Privacy 设置。
+正式名称仍然是：
 
-### 阶段 4 — 0.7 Update & Trust
+**KINGAI OS Desktop**
 
-完成签名更新元数据、TUF布局、A/B回滚原型、Secure Boot/TPM、恢复环境和故障注入测试。
+定位覆盖：
 
-### 阶段 5 — 0.9 RC
+- 家庭电脑；
+- 办公电脑；
+- AI 工作站；
+- 开发者电脑；
+- 创作者电脑；
+- 本地模型电脑。
 
-完成安装/升级/回滚验证、每个镜像的 SBOM/provenance、对应源码流程、安全公告、发布签名流程、隐私控制和公开硬件兼容文档。
+## 四个平台的目标
 
-### 阶段 6 — 1.0 Stable
+### Server
 
-只有通过安全、法律、许可证、升级、回滚、恢复和构建验证后才发布 Stable。
+服务器、VPS、企业自动化、AI 节点、分布式 Agent、Fleet。
 
-1.0 之后再扩展 ARM64 Desktop、IoT 硬件包、全球 Fleet、组织级记忆/策略、远程证明、签名 Agent Marketplace 和企业长期支持。
+### Desktop
+
+个人电脑与工作站，提供 KINGAI Intelligence / Flow / Classic 三套体验，共享一个 Desktop Core。
+
+### IoT / Edge
+
+ARM64/x86-64 网关、机器人、边缘设备与嵌入式智能。具体硬件必须通过 Device Pack 验证后才算正式支持。
+
+### Container
+
+Docker/OCI 云端和本地容器运行环境，支持 amd64/arm64 构建，默认非 root daemon，保留 KINGAI Policy、Approval、Task、Memory、Model 和 Audit 核心。
+
+## 下一个关键里程碑：0.3 Agent Runtime Alpha
+
+必须真正完成：
+
+```text
+目标
+ ↓
+Planner
+ ↓
+Task Graph
+ ↓
+Policy
+ ↓
+Approval
+ ↓
+受限 Execution Broker
+ ↓
+Sandbox
+ ↓
+结果
+ ↓
+Audit
+ ↓
+Memory
+```
+
+Execution Broker 不允许设计成“AI 获得无限制 root shell”。所有高权限操作必须映射成明确 Capability，并具备超时、资源限制、审计和可撤销控制。
+
+## 1.0 前必须完成
+
+- 生产 TUF；
+- 生产签名；
+- Secure Boot 正式密钥流程；
+- A/B 更新与回滚；
+- Recovery；
+- 全 Artifact SBOM/Provenance；
+- CVE 自动化；
+- 分支与 Release Governance；
+- R2/对象存储正式交付；
+- 硬件兼容矩阵；
+- 法律与许可证审核。
+
+只有全部必需门禁通过后，KINGAI OS 才进入 Stable。

@@ -59,6 +59,11 @@ jobs:
           test -f LICENSE
           test -f NOTICE
           test -f SECURITY.md
+          test -f profiles/server.yaml
+          test -f profiles/desktop.yaml
+          test -f profiles/iot.yaml
+          test -f profiles/container.yaml
+          test -f container/Dockerfile
           test -f configs/policy.json
           test -f configs/agents.json
           test -f configs/models.json
@@ -71,6 +76,7 @@ jobs:
           test -f scripts/build-rootfs.sh
           test -f scripts/build-live-iso.sh
           test -f scripts/build-iot-image.sh
+          test -f scripts/build-container.sh
           test -f scripts/check-release-gate-freshness.sh
           test -f scripts/test-release-gate-freshness.sh
           test -f scripts/release-base-version.sh
@@ -89,7 +95,7 @@ jobs:
           ./dist/kingai-installer version
           ./dist/kingai-update --help >/dev/null 2>&1 || test $? -eq 2
           ./dist/kingai-recovery 2>/dev/null || test $? -eq 2
-      - name: End-to-end kingaid local IPC security and health intelligence smoke
+      - name: End-to-end kingaid D5 local runtime smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -100,16 +106,37 @@ jobs:
           export KINGAI_MODELS="$PWD/configs/models.json"
           export KINGAI_AUDIT="$tmp/audit.jsonl"
           export KINGAI_PUBLIC_STATUS="$tmp/public-status.json"
+          export KINGAI_APPROVAL_ROOT="$tmp/approvals"
+          export KINGAI_MEMORY_ROOT="$tmp/memory"
+          export KINGAI_TASK_ROOT="$tmp/tasks"
           ./dist/kingaid >"$tmp/kingaid.log" 2>&1 &
           pid=$!
           cleanup() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
           trap cleanup EXIT
           for _ in $(seq 1 50); do [[ -S "$KINGAI_SOCKET" && -f "$KINGAI_PUBLIC_STATUS" ]] && break; sleep 0.1; done
           test -S "$KINGAI_SOCKET"; test -f "$KINGAI_PUBLIC_STATUS"
+
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/healthz > "$tmp/health.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/status > "$tmp/status.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","capability":"filesystem.read"}' http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"service.restart"}' http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
+
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","kind":"task","sensitivity":"private","data":{"note":"runtime-smoke"}}' http://kingai/v1/memory/put > "$tmp/memory-put.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/memory/list > "$tmp/memory-list.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","goal":"verify D5 task graph"}' http://kingai/v1/tasks/create > "$tmp/task-create.json"
+          task_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$tmp/task-create.json")
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d "{\"id\":\"$task_id\",\"status\":\"planning\"}" http://kingai/v1/tasks/transition > "$tmp/task-planning.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/tasks/list > "$tmp/task-list.json"
+
+          sudo curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"package.install","target":"nginx","ttl_seconds":60}' http://kingai/v1/approval/request > "$tmp/approval-request.json"
+          approval_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$tmp/approval-request.json")
+          sudo curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d "{\"id\":\"$approval_id\",\"action\":\"approve\"}" http://kingai/v1/approval/decision > "$tmp/approval-approved.json"
+          sudo curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d "{\"agent\":\"system-ops\",\"capability\":\"package.install\",\"target\":\"nginx\",\"approval_id\":\"$approval_id\"}" http://kingai/v1/policy/evaluate > "$tmp/approval-consumed.json"
+          sudo curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d "{\"agent\":\"system-ops\",\"capability\":\"package.install\",\"target\":\"nginx\",\"approval_id\":\"$approval_id\"}" http://kingai/v1/policy/evaluate > "$tmp/approval-reuse.json"
+
+          set +e
+          curl --silent --show-error --output "$tmp/model-select.txt" --write-out '%{http_code}' --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"capability":"chat","private":true}' http://kingai/v1/model/select > "$tmp/model-code.txt"
+          set -e
 
           diag="$tmp/diagroot"
           mkdir -p "$diag/etc/kingai/update" "$diag/var/lib/kingai-state/kingai/update"
@@ -131,10 +158,24 @@ jobs:
           root = pathlib.Path(sys.argv[1])
           assert json.loads((root/'health.json').read_text())['ok'] is True
           status = json.loads((root/'status.json').read_text())
-          assert status['name'] == 'KINGAI OS' and status['agent_registry'] == 'enabled'
+          assert status['name'] == 'KINGAI OS'
+          assert status['architecture'] == 'D5-preview'
+          assert status['approval_broker'] == 'enabled'
+          assert status['task_graph'] == 'enabled'
+          assert status['memory_service'] == 'enabled'
           assert json.loads((root/'main-policy.json').read_text())['allowed'] is True
           spoof = json.loads((root/'spoof-policy.json').read_text())
           assert spoof['allowed'] is False and 'identity' in spoof['reason']
+          memories = json.loads((root/'memory-list.json').read_text())
+          assert len(memories) == 1 and memories[0]['kind'] == 'task'
+          assert json.loads((root/'task-planning.json').read_text())['status'] == 'planning'
+          tasks = json.loads((root/'task-list.json').read_text())
+          assert len(tasks) == 1 and tasks[0]['goal'] == 'verify D5 task graph'
+          assert json.loads((root/'approval-approved.json').read_text())['status'] == 'approved'
+          assert json.loads((root/'approval-consumed.json').read_text())['allowed'] is True
+          reuse = json.loads((root/'approval-reuse.json').read_text())
+          assert reuse['allowed'] is False and reuse['reason'] == 'approval token rejected'
+          assert (root/'model-code.txt').read_text() == '503'
           public = json.loads((root/'public-status.json').read_text())
           assert public['product'] == 'KINGAI OS' and public['registered_agents'] >= 1
           lowered = (root/'public-status.json').read_text().lower()
@@ -151,3 +192,36 @@ jobs:
           PY
           test "$(stat -c '%a' "$KINGAI_PUBLIC_STATUS")" = 644
           test -s "$KINGAI_AUDIT"
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build KINGAI OS Container amd64
+        run: docker build --file container/Dockerfile --tag kingai-os:ci .
+      - name: Container runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name kingai-os-ci kingai-os:ci
+          cleanup() { docker rm -f kingai-os-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if docker exec kingai-os-ci kingai status --json > /tmp/kingai-container-status.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          docker exec kingai-os-ci kingai version
+          docker exec kingai-os-ci kingai status --json
+          docker exec kingai-os-ci kingai memory put task '{"note":"container-smoke"}' > /tmp/kingai-container-memory.json
+          docker exec kingai-os-ci kingai task create main verify container runtime > /tmp/kingai-container-task.json
+          python3 - <<'PY'
+          import json
+          status=json.load(open('/tmp/kingai-container-status.json'))
+          assert status['name']=='KINGAI OS'
+          assert status['architecture']=='D5-preview'
+          memory=json.load(open('/tmp/kingai-container-memory.json'))
+          assert memory['kind']=='task'
+          task=json.load(open('/tmp/kingai-container-task.json'))
+          assert task['goal']=='verify container runtime'
+          PY
+          test "$(docker inspect --format '{{.Config.User}}' kingai-os-ci)" = "_kingai:kingai"

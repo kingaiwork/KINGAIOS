@@ -4,49 +4,153 @@ Official OS site: https://os.kingai.work
 KINGAI main site: https://www.kingai.work
 Repository: https://github.com/kingaiwork/KINGAIOS
 Documentation: docs/INDEX.md
+Verified status: docs/STATUS.md
+Platform matrix: docs/PLATFORMS.md
+Roadmap: docs/ROADMAP.md
 Business and partnership: vip@kingai.work
 
 Project: KINGAI OS
-Architecture: D4 Sovereign Distributed Intelligence Operating System
-Status: Developer Foundation / Pre-Alpha
-Base technology: Ubuntu 26.04 LTS technology base with KINGAI-owned intelligence, governance, security, update, desktop and distribution layers
+Architecture: D5 Sovereign Distributed Intelligence Operating System
+Status: Alpha Runtime Foundation / Pre-Alpha
+Source version: 0.1.0-dev
+Base technology: Ubuntu 26.04 LTS technology base plus KINGAI-owned intelligence, governance, runtime, security, update, recovery, desktop and distribution layers
 Primary principles: AI-native, Agent-native, Local-first, Secure-by-default, Model-neutral, Cloud-neutral, Controlled-evolution
 
 Official editions:
 - KINGAI OS Server
-- KINGAI OS Desktop
+- KINGAI OS Desktop (personal computer / PC edition)
 - KINGAI OS IoT / Edge
+- KINGAI OS Container (Docker / OCI)
+
+Desktop note:
+- Desktop is the personal-computer edition.
+- There is no separate PC build profile.
+
+Current D5 runtime capabilities:
+- local Unix-socket kingaid API
+- Unix peer credential identity
+- Agent Registry
+- Capability Policy
+- Approval Broker
+- one-time approval consumption
+- Task Graph persistence and lifecycle
+- local-first Memory service
+- provider-neutral Model Router
+- append-oriented Audit
+- sanitized Public Status
+- CLI management for approval, memory, model and task operations
+
+Approval security:
+- approval is bound to Agent + Capability + Target Hash + Peer UID
+- approval expires
+- approval is single-use
+- client JSON cannot self-assert Owner or Approved
+- owner-level approval decisions are local UID 0 in the current developer implementation
+
+Task states:
+- created
+- planning
+- waiting
+- waiting_approval
+- running
+- paused
+- blocked
+- failed
+- completed
+- cancelled
 
 Desktop experiences:
 - KINGAI Intelligence
 - KINGAI Flow
 - KINGAI Classic
 
-Core layers:
+Core architecture layers:
 - KINGAI Intelligence
-- KINGAI Memory
 - KINGAI Governance
-- KINGAI Agent Runtime
-- KINGAI Model Fabric
-- KINGAI Security
-- KINGAI Trust and Update Chain
-- KINGAI Desktop Experience
+- KINGAI Execution Fabric
+- KINGAI Secure Core
+- Linux Kernel
 
-Execution adapters may include:
-- Native runtime
+Shared logical services:
+- kingaid
+- policy/capability governance
+- approval broker
+- task graph
+- model fabric
+- memory fabric
+- audit
+- update/recovery
+- device integration
+
+Execution adapters planned or staged:
+- Native constrained executor
 - OpenClaw
 - MCP
-- Codex
+- Codex-compatible tools
 - Browser runtime
 - Rootless containers
 - Isolated VM/MicroVM backends
 
+Platform targets:
+Server:
+- headless
+- amd64 and arm64 rootfs paths
+- current published Developer Preview: amd64 ISO
+
+Desktop:
+- personal computer / PC edition
+- current architecture target: amd64
+- Plasma 6 / KWin Wayland / SDDM / Qt 6
+
+IoT / Edge:
+- generic amd64 and arm64 image paths
+- board-specific support requires validated Device Packs
+
+Container:
+- Docker / OCI
+- amd64 and arm64 Buildx targets
+- non-root kingaid by default
+- no management TCP port exposed by default
+- persistent /var/lib/kingai and /var/log/kingai
+
+Verified OS engineering gate families include:
+- Installer VM
+- Desktop Live VM
+- Server BIOS/UEFI VM
+- A/B Update VM
+- Recovery VM
+- TUF Client
+- Secure Boot VM
+- Rollback Drill
+- Recovery Drill
+
+Not production-complete:
+- constrained privileged Execution Broker
+- final AppArmor/seccomp/Landlock agent sandbox policy
+- Planner/task-step scheduler
+- production OpenClaw/MCP/Codex adapters
+- full M0-M6 memory retrieval/evolution pipeline
+- production model-provider adapters
+- production TUF repository
+- production signing key custody and Secure Boot signing
+- release branch governance
+- production R2 release delivery
+- board-specific bootable Edge Device Packs
+- Stable lifecycle commitment
+
 Distribution policy:
-- Source code and metadata: GitHub
-- Large artifacts at or above 2 GiB: KINGAI object storage / Cloudflare R2
+- Source code and release metadata: GitHub
+- Large artifacts: KINGAI-controlled object storage / Cloudflare R2 when release credentials and gates are present
 - Public download namespace: https://os.kingai.work/download
 - Updates: https://os.kingai.work/updates
-- Repository: https://os.kingai.work/repo
+- Repository namespace: https://os.kingai.work/repo
+
+Release channels:
+- nightly
+- dev
+- beta
+- rc
+- stable
 
 Legal note:
-KINGAI OS is independently developed on the Ubuntu 26.04 LTS technology base and follows applicable open-source licenses and trademark rules.
+KINGAI OS is independently developed on an Ubuntu 26.04 LTS technology base and follows applicable open-source license and trademark requirements. Release claims are intentionally separated from source-code existence and CI verification.

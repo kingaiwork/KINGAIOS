@@ -1,20 +1,25 @@
 # Building KINGAI OS
 
-## English
+**Development line:** D5 Alpha Runtime Foundation
 
-KINGAI OS currently builds the D4 Developer Foundation core. Bootable production images are introduced only after the rootfs, boot trust, installer and rollback stages are validated.
+KINGAI OS is built from one shared codebase into four official distribution forms: Server, Desktop, IoT/Edge and Container.
 
-### Core build
+## Requirements
 
-Requirements:
+Core development:
 
 ```text
-Go 1.23+
+Go 1.25+
 Bash
 GNU coreutils
+Git
 ```
 
-Run:
+Bootable image work additionally uses tools such as `mmdebstrap`, `xorriso`, GRUB tooling, SquashFS and QEMU depending on the target workflow.
+
+Container work requires Docker with Buildx.
+
+## Core build
 
 ```bash
 make check
@@ -27,63 +32,166 @@ Cross-build foundation binaries:
 bash scripts/build-foundation.sh
 ```
 
-Outputs are written to `out/foundation/` and are ignored by Git.
+Outputs are written to `out/foundation/`.
 
-### Image profiles
-
-Official image composition is defined in:
+## Official profiles
 
 ```text
 profiles/server.yaml
 profiles/desktop.yaml
 profiles/iot.yaml
+profiles/container.yaml
 ```
 
-These profiles define architecture, KINGAI features, image format and size budgets.
+`desktop` is the personal-computer/PC edition. There is no separate `pc` build profile.
 
-### Ubuntu 26.04 development bootstrap
+## Server rootfs
 
-The 26.04 LTS generation is Resolute Raccoon. During the Developer Foundation stage, rootfs experiments may use Ubuntu's Resolute package/archive infrastructure. Public Stable images will add KINGAI package provenance, branding, license inventory, signing and release gates before being considered releasable.
+```bash
+sudo bash scripts/build-rootfs.sh server amd64 dist
+```
 
-### Image build stages
+The rootfs pipeline also has an arm64 composition path. A rootfs target does not automatically mean a bootable release artifact has passed all architecture-specific gates.
+
+## Desktop / personal-computer rootfs
+
+```bash
+sudo bash scripts/build-rootfs.sh desktop amd64 dist
+```
+
+Desktop installs the Plasma 6 / KWin Wayland / SDDM / Qt 6 foundation plus KINGAI desktop assets and first-run experience.
+
+## Server or Desktop Live ISO
+
+Build rootfs first, then:
+
+```bash
+sudo bash scripts/build-live-iso.sh server dist
+sudo bash scripts/build-live-iso.sh desktop dist
+```
+
+The current Live ISO script is amd64-focused. Other architectures require separate bootloader and hardware validation before they are advertised as release targets.
+
+## IoT / Edge image
+
+```bash
+sudo bash scripts/build-iot-image.sh arm64 dist
+sudo bash scripts/build-iot-image.sh amd64 dist
+```
+
+Generic Edge images are architecture artifacts. Concrete device support still requires a validated Device Pack.
+
+## Docker / OCI Container
+
+Single-architecture local build:
+
+```bash
+docker build -f container/Dockerfile -t kingai-os:dev .
+```
+
+Multi-architecture Buildx verification:
+
+```bash
+KINGAI_CONTAINER_PLATFORMS=linux/amd64,linux/arm64 \
+  bash scripts/build-container.sh
+```
+
+Export an OCI archive:
+
+```bash
+KINGAI_CONTAINER_OUTPUT=dist/kingai-os.oci.tar \
+KINGAI_CONTAINER_PLATFORMS=linux/amd64,linux/arm64 \
+  bash scripts/build-container.sh
+```
+
+The container image:
+
+- runs `kingaid` directly instead of requiring systemd;
+- runs as non-root `_kingai` by default;
+- exposes no management TCP port;
+- persists `/var/lib/kingai` and `/var/log/kingai` as volume targets;
+- uses `/run/kingai/kingaid.sock` for local management.
+
+## D5 runtime development
+
+Core runtime components are ordinary Go packages and are tested with:
+
+```bash
+go test ./...
+go vet ./...
+```
+
+Foundation CI also performs a local Unix-socket integration test covering:
+
+- policy evaluation;
+- peer identity isolation;
+- Memory put/list;
+- Task Graph create/transition/list;
+- approval request/approve/consume;
+- one-time approval reuse rejection;
+- model-router fail-closed behavior when no candidate exists;
+- audit and sanitized public status.
+
+The Container CI job additionally builds the Docker image, starts `kingaid`, and exercises CLI runtime operations inside the image.
+
+## Build stages for bootable OS artifacts
 
 ```text
-1. Source manifest resolution
-2. Base/rootfs construction
-3. KINGAI core installation
+1. Source/version resolution
+2. Base rootfs construction
+3. KINGAI binaries
 4. Profile package composition
-5. Security policy installation
+5. Policy / agent / model configuration
 6. KINGAI branding
-7. Boot/installer composition
-8. Image optimization
-9. SBOM and provenance
-10. Signature/checksum
-11. Install/boot test
-12. Upgrade/rollback/recovery test
-13. Release routing
+7. Boot / installer composition
+8. Desktop or Edge specialization
+9. SBOM / package inventory
+10. Checksum / manifest
+11. VM boot/install verification
+12. Update / rollback / recovery validation
+13. Release-gate freshness check
+14. Release routing
 ```
 
-An image that has not passed the relevant gates must not be labeled Stable.
+## Release truth
 
-### Artifact routing
+`release/gates.json` is fail-closed. A source feature must not be described as production-ready merely because it compiles.
 
-Use:
+Release channels:
+
+```text
+dev -> beta -> rc -> stable
+```
+
+## Artifact routing
 
 ```bash
 bash scripts/publish-artifact.sh <artifact>
 ```
 
-The script computes SHA256 and routes files at or above 2 GiB to Cloudflare R2 when credentials are supplied through the environment.
+The publishing helper computes SHA-256 and can route large artifacts to Cloudflare R2 when the required credentials and release gates are present.
 
-See `docs/R2.md`.
+See:
+
+- `docs/R2.md`
+- `docs/RELEASE-POLICY.md`
+- `docs/STATUS.md`
+- `docs/PLATFORMS.md`
 
 ---
 
-## 中文
+# 中文
 
-KINGAI OS 当前首先构建 D4 Developer Foundation 核心。只有 RootFS、Boot Trust、安装器、升级和回滚流程经过验证后，才进入正式可启动发行镜像阶段。
+KINGAI OS 当前从同一个仓库构建四种正式形态：
 
-### Core 构建
+```text
+Server
+Desktop（个人电脑 / PC）
+IoT / Edge
+Container（Docker / OCI）
+```
+
+## Core
 
 ```bash
 make check
@@ -91,28 +199,46 @@ make build
 bash scripts/build-foundation.sh
 ```
 
-输出保存在 `out/foundation/`，不会提交到 Git。
-
-### 三个镜像 Profile
-
-```text
-profiles/server.yaml
-profiles/desktop.yaml
-profiles/iot.yaml
-```
-
-分别控制服务器、桌面和 IoT/Edge 的架构、功能、格式和体积预算。
-
-### 镜像流水线
-
-正式镜像按照：源码解析 → RootFS → KINGAI Core → Profile → 安全策略 → 品牌 → Boot/Installer → 精简 → SBOM/Provenance → 签名 → 安装/启动测试 → 升级/回滚测试 → 发布分流。
-
-没有通过相应门禁的镜像不得标记为 Stable。
-
-### 大文件发布
+## Server
 
 ```bash
-bash scripts/publish-artifact.sh <artifact>
+sudo bash scripts/build-rootfs.sh server amd64 dist
+sudo bash scripts/build-live-iso.sh server dist
 ```
 
-脚本会计算 SHA256；达到 2 GiB 的大文件在 R2 环境变量配置完成后自动走 Cloudflare R2。详见 `docs/R2.md`。
+## Desktop / PC
+
+```bash
+sudo bash scripts/build-rootfs.sh desktop amd64 dist
+sudo bash scripts/build-live-iso.sh desktop dist
+```
+
+Desktop 就是个人电脑版本，不另外创建 `pc` Profile。
+
+## IoT / Edge
+
+```bash
+sudo bash scripts/build-iot-image.sh arm64 dist
+sudo bash scripts/build-iot-image.sh amd64 dist
+```
+
+通用镜像不等于具体硬件已经支持；具体设备必须通过 Device Pack 和真实启动验证。
+
+## Docker / OCI
+
+```bash
+docker build -f container/Dockerfile -t kingai-os:dev .
+```
+
+多架构：
+
+```bash
+KINGAI_CONTAINER_PLATFORMS=linux/amd64,linux/arm64 \
+  bash scripts/build-container.sh
+```
+
+Container 默认非 root 运行 `kingaid`，不开放管理 TCP 端口，Memory / Task / Approval / Audit 数据使用持久化目录。
+
+## D5 CI
+
+当前 CI 已覆盖 Runtime 闭环测试和 Docker 实际启动测试。没有通过 CI、VM 或 Release Gate 的能力不会被写成 Stable 已完成。

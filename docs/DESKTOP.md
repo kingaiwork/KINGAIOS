@@ -1,24 +1,27 @@
 # KINGAI OS Desktop Architecture
 
-## English
+**Role:** Personal computer / PC edition  
+**Development line:** D5 Alpha Runtime Foundation
 
-KINGAI OS Desktop uses one shared desktop foundation with multiple KINGAI-owned experience profiles.
+KINGAI OS Desktop is the official personal-computer edition of KINGAI OS. There is no separate PC build profile.
 
-### Foundation direction
+It uses one shared desktop foundation with three KINGAI-owned experience profiles and the same Policy, Approval, Task, Memory, Model and Audit core used by Server, IoT and Container.
 
-Initial implementation direction:
+## Foundation
 
 ```text
 Wayland
   + KWin
-  + Plasma/Qt/QML foundations where useful
+  + Plasma 6
+  + Qt 6 / QML
+  + SDDM
   + KINGAI Desktop Core
-  + KINGAI-owned shell, panels, settings and AI surfaces
+  + KINGAI Runtime
 ```
 
-This provides mature Linux graphics/window-management infrastructure while allowing KINGAI to own the visible product experience and AI-native workflow.
+Linux graphics/window-management infrastructure is reused where mature, while KINGAI owns the product experience, intelligent surfaces and governance model.
 
-### Experiences
+## One Desktop Core, three experiences
 
 ```text
 KINGAI Desktop Core
@@ -27,111 +30,326 @@ KINGAI Desktop Core
 └── KINGAI Classic
 ```
 
-All three profiles share:
+All three share:
 
 - compositor/window manager;
-- settings framework;
+- notification framework;
 - file integration;
-- notification service;
 - global search;
-- Agent Panel;
-- memory/task/project APIs;
-- accessibility layer;
-- application launcher backend.
+- settings;
+- accessibility;
+- application launcher backend;
+- KINGAI Agent Center;
+- Task Graph API;
+- Approval API;
+- Memory API;
+- Model API;
+- system health/status.
 
-Profiles change layout and interaction instead of installing three independent desktops.
+They change layout and interaction, not the underlying operating-system runtime.
 
-### First-run experience
+## KINGAI Intelligence
 
-On first graphical login:
+The flagship personal-computer experience should expose intelligent objects as first-class desktop concepts:
+
+```text
+Home
+Agents
+Tasks
+Approvals
+Memory
+Knowledge
+Models
+Automations
+Devices
+Files
+Apps
+System
+```
+
+The goal is not to require the user to open a separate chatbot before every action. Files, projects, active tasks, agent state and memory context should be able to participate in one governed workflow.
+
+Suggested primary layout:
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ KINGAI OS                                                │
+├──────────────┬──────────────────────────────┬─────────────┤
+│ Navigation   │ Workspace / Task / Context   │ Live Status │
+│              │                              │              │
+│ Home         │ Goal                         │ System       │
+│ Agents       │ Plan                         │ Model        │
+│ Tasks        │ Steps                        │ Agents       │
+│ Approvals    │ Results                      │ Security     │
+│ Memory       │ Files / Knowledge            │ Update       │
+│ Models       │                              │ Health       │
+└──────────────┴──────────────────────────────┴─────────────┘
+```
+
+## Approval Center
+
+D5 introduces a real Approval Broker, so the desktop should surface approval as a native OS concept.
+
+Example interaction:
+
+```text
+KINGAI requests permission
+
+Agent: system-ops
+Action: install package
+Target: nginx
+Risk: system change
+Expires: 5 minutes
+
+[Deny]  [Allow once]
+```
+
+The UI must never create a reusable global “always allow everything” shortcut that bypasses policy.
+
+Future UI may support narrowly scoped remembered policy decisions, but those remain separate from one-time approval tokens.
+
+## Task Center
+
+Task Center should reflect the runtime state machine:
+
+```text
+created
+planning
+waiting
+waiting_approval
+running
+paused
+blocked
+failed
+completed
+cancelled
+```
+
+A task view should show:
+
+- goal;
+- owning Agent;
+- current state;
+- steps;
+- dependencies;
+- required capabilities;
+- approval state;
+- execution result;
+- audit timeline;
+- related memory/context.
+
+## Memory Center
+
+Desktop Memory controls should give the user visibility into local intelligent state instead of hiding it behind opaque model behavior.
+
+Long-term views:
+
+```text
+M0 Context
+M1 Working
+M2 Task
+M3 Episodic
+M4 Semantic
+M5 User / Organization
+M6 Evolution
+```
+
+User controls should include:
+
+- search;
+- sensitivity;
+- retention/expiry;
+- export;
+- delete;
+- cloud policy;
+- model-access policy;
+- source/provenance.
+
+The current backend is simpler and local-first; UI claims must match actual backend capability during Alpha.
+
+## Model Center
+
+Model Center should present local and remote providers through one KINGAI Model Fabric rather than vendor-specific primary navigation.
+
+User-visible controls may include:
+
+- local/cloud/hybrid mode;
+- private mode;
+- offline mode;
+- active providers;
+- availability/health;
+- latency/cost class;
+- capability support;
+- local GPU/NPU status.
+
+Private/offline constraints are policy inputs, not decorative toggles.
+
+## Agent Center
+
+Agent Center should make Agent identity and permissions understandable:
+
+```text
+Agent
+Role
+Capabilities
+Current tasks
+Recent decisions
+Runtime adapter
+Health
+```
+
+Privileged roles such as `system-ops` and `sec-ops` must remain visually distinguishable from ordinary Agent identities.
+
+## KINGAI Flow
+
+A spatial, dock-oriented layout with a clean top-level interface and workspace-focused navigation. It shares all governance and runtime services with Intelligence and Classic.
+
+## KINGAI Classic
+
+A traditional PC workflow using taskbar/application-menu concepts for easier migration from conventional operating systems. Classic changes interaction style, not the security model.
+
+## First-run experience
 
 ```text
 KINGAI Welcome
-  -> visual animated previews
-  -> Intelligence / Flow / Classic
-  -> Try / Select
-  -> save per-user profile
-  -> launch desktop
+  ↓
+Preview Intelligence / Flow / Classic
+  ↓
+Select experience
+  ↓
+Privacy / local-vs-cloud defaults
+  ↓
+Optional model setup
+  ↓
+Enter Desktop
 ```
 
-The selection remains changeable later:
+The selected experience remains changeable later:
 
 ```text
 Settings -> Personalization -> Desktop Experience
 ```
 
-### KINGAI Intelligence
+## Personal-computer target users
 
-The flagship experience exposes AI-native objects as first-class desktop concepts:
+Desktop is intended for:
+
+- everyday home PCs;
+- business/office PCs;
+- software-development machines;
+- AI development workstations;
+- creator workstations;
+- local-model PCs;
+- high-performance GPU/NPU workstations.
+
+## Performance principles
+
+- inactive experience shells are not loaded simultaneously;
+- shared services/libraries are reused across profiles;
+- AI visualization surfaces are lazy-loaded;
+- large local model weights are not bundled into the default ISO without explicit reason/license review;
+- hardware acceleration is used where supported;
+- reduced-effects mode is available;
+- cold login, idle RAM, compositor latency and battery impact belong in hardware validation;
+- background Agent work must be resource-controlled and visible to the user.
+
+## Security principles
+
+Desktop UI cannot bypass the core runtime simply because it is a trusted-looking KINGAI application.
+
+The same path applies:
 
 ```text
-Agents
-Memory
-Tasks
-Projects
-Knowledge
-Files
-Apps
-Automation
-System status
+Desktop action
+  ↓
+Agent Identity
+  ↓
+Capability Policy
+  ↓
+Approval if required
+  ↓
+Constrained Executor
+  ↓
+Audit
 ```
 
-The desktop should make it possible to move naturally between a file, project, agent, memory context and active task without requiring a separate chatbot workflow.
-
-### KINGAI Flow
-
-A spatial, dock-oriented layout with a clean top-level interface and workspace-focused navigation. It is a KINGAI-owned product experience and must use original KINGAI assets.
-
-### KINGAI Classic
-
-A traditional PC workflow using taskbar/application-menu concepts for easier migration from conventional desktop environments.
-
-### Performance rules
-
-- do not load inactive experience shells simultaneously;
-- share services and libraries across profiles;
-- lazy-load AI visualization surfaces;
-- keep heavy local models outside the ISO;
-- use hardware acceleration where available;
-- provide a reduced-effects mode;
-- profile cold login, idle RAM, compositor latency and battery impact in CI/hardware validation.
+The desktop should explain permissions better than a terminal does, not weaken them.
 
 ---
 
-## 中文
+# 中文
 
-KINGAI OS Desktop 使用一个统一桌面底座，再提供三种 KINGAI 自有桌面体验，不安装三套独立桌面环境。
+KINGAI OS Desktop 就是正式的 **个人电脑 / PC 版本**，不会另外维护第二个 PC Profile。
 
-初期技术方向：
+它面向家庭电脑、办公电脑、开发者电脑、创作者工作站和本地 AI 工作站。
 
-```text
-Wayland
-+ KWin
-+ Plasma / Qt / QML 基础能力
-+ KINGAI Desktop Core
-+ KINGAI 自有 Shell / Panel / Settings / AI UI
-```
-
-### 三种体验
-
-- **KINGAI Intelligence**：旗舰 AI 原生桌面，把 Agents、Memory、Tasks、Projects、Knowledge、Files、Apps、Automation 直接变成桌面一级对象。
-- **KINGAI Flow**：空间化、Dock导向、简洁现代的 KINGAI 自有工作流。
-- **KINGAI Classic**：传统任务栏与应用菜单工作流，降低普通 PC 用户迁移成本。
-
-三个桌面共用窗口系统、设置、通知、搜索、文件接口、Agent Panel、Memory/Task API 和应用启动后端。
-
-### 第一次进入系统
-
-第一次图形登录进入 KINGAI Welcome，以动画/实时缩略展示三个桌面，用户可以预览后选择；设置按用户保存。
-
-进入系统后：
+## 一个底座，三套体验
 
 ```text
-Settings -> Personalization -> Desktop Experience
+KINGAI Desktop Core
+├── KINGAI Intelligence
+├── KINGAI Flow
+└── KINGAI Classic
 ```
 
-仍然可以随时切换。
+三个体验共享同一套：
 
-### 性能原则
+- Wayland / KWin / Plasma 6；
+- 通知、文件、搜索、设置；
+- Agent Center；
+- Task Graph；
+- Approval；
+- Memory；
+- Model；
+- Health；
+- Audit。
 
-未启用的桌面 Shell 不同时加载；共享底层服务；AI 可视化按需加载；大模型不放 ISO；支持硬件加速与低特效模式，并把首次登录速度、Idle RAM、窗口延迟和电池影响纳入测试。
+## D5 桌面重点
+
+桌面不再只是“好看的 Linux UI”，而是把系统智能能力做成可理解、可操作的原生界面：
+
+```text
+Agent Center
+Task Center
+Approval Center
+Memory Center
+Model Center
+Automation
+System Health
+```
+
+例如 AI 请求安装软件、修改网络、重启服务时，应出现明确的系统审批卡片，而不是后台偷偷执行。
+
+## KINGAI Intelligence
+
+旗舰体验把 Agents、Tasks、Approvals、Memory、Knowledge、Models、Files、Apps、Automation 作为桌面一级对象。
+
+目标是让用户从文件、项目、任务、智能体、知识和记忆之间自然切换，而不是每次都先打开聊天机器人。
+
+## KINGAI Flow
+
+现代、空间化、Dock 导向的工作流，但与其他体验共享同一个安全与 Runtime Core。
+
+## KINGAI Classic
+
+保留传统任务栏、应用菜单和熟悉的 PC 交互，降低普通用户迁移门槛；Classic 不会获得更宽松的安全规则。
+
+## 核心原则
+
+Desktop UI 只能把权限解释得更清楚，不能绕过 Policy。
+
+最终路径仍然是：
+
+```text
+用户动作
+ ↓
+Agent Identity
+ ↓
+Capability Policy
+ ↓
+需要时 Approval
+ ↓
+受限 Executor
+ ↓
+Audit
+```

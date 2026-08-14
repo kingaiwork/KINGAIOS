@@ -1,65 +1,148 @@
-# KINGAI OS D4 Architecture
+# KINGAI OS D5 Architecture
 
-## English
+KINGAI OS D5 is a sovereign distributed-intelligence operating-system architecture built around one shared intelligence/governance/runtime core and four official distribution forms: Server, Desktop, IoT/Edge and Container.
 
-KINGAI OS D4 is a sovereign distributed-intelligence operating-system architecture built around one shared core and three distribution profiles: Server, Desktop, and IoT/Edge.
+## 1. Architectural intent
 
-### Layer model
+The system is designed around a separation between intelligence and authority.
 
 ```text
-KINGAI Cloud / Optional Control Plane
-            |
-            v
-KINGAI Intelligence
-  Brain / Planner / Memory / Knowledge / Evolution
-            |
-            v
-KINGAI Governance
-  Policy / Capability / Risk / Identity / Audit
-            |
-            v
-Execution Fabric
-  Native / OpenClaw / MCP / Codex / Browser / Containers / VM
-            |
-            v
-KINGAI Secure Core
-  systemd / cgroup v2 / AppArmor / seccomp / Landlock
-            |
-            v
-Linux Kernel
+Intelligence may propose and plan.
+Policy decides what class of action is allowed.
+Approval supplies explicit owner authority when needed.
+Execution is constrained and audited.
+Memory records outcomes without silently expanding privilege.
 ```
 
-### Core services
+The target is not an unrestricted autonomous root agent. The target is a governed operating system in which intelligent components can become more capable without erasing user control.
 
-Planned stable services:
+## 2. Layer model
 
-- `kingaid` — orchestration and system intelligence daemon.
-- `kingai-policyd` — capability and authorization policy service.
-- `kingai-execd` — privileged execution broker.
-- `kingai-modeld` — provider-neutral model routing and health.
-- `kingai-memoryd` — local-first memory and retrieval service.
-- `kingai-updated` — signed update, channel and rollback service.
-- `kingai-auditd` — append-oriented security and agent audit service.
-- `kingai-deviced` — hardware/device identity and edge integration service.
+```text
+Optional KINGAI Cloud / Control Plane
+                │
+                ▼
+┌────────────────────────────────────────────┐
+│ KINGAI Intelligence                        │
+│ Brain · Planner · Task Graph · Knowledge   │
+│ Memory · Model Fabric · Evolution          │
+└────────────────────┬───────────────────────┘
+                     │
+                     ▼
+┌────────────────────────────────────────────┐
+│ KINGAI Governance                          │
+│ Identity · Capability · Policy · Approval  │
+│ Risk · Audit · Privacy                     │
+└────────────────────┬───────────────────────┘
+                     │
+                     ▼
+┌────────────────────────────────────────────┐
+│ Execution Fabric                           │
+│ Native · OpenClaw · MCP · Codex-compatible │
+│ Browser · Rootless Container · VM/MicroVM  │
+└────────────────────┬───────────────────────┘
+                     │
+                     ▼
+┌────────────────────────────────────────────┐
+│ KINGAI Secure Core                         │
+│ systemd · cgroup v2 · AppArmor · seccomp   │
+│ Landlock · Unix peer identity              │
+└────────────────────┬───────────────────────┘
+                     │
+                     ▼
+                 Linux Kernel
+```
 
-The initial implementation may combine multiple logical services in fewer binaries to reduce operational complexity. Service boundaries are architectural boundaries first, process boundaries second.
+Container deployments reuse the KINGAI Intelligence/Governance/Runtime layers without requiring systemd inside the OCI image.
 
-### Capability security
+## 3. Current D5 runtime path
 
-Agents never receive blanket root authority. Actions are described as capabilities, evaluated by policy, then executed by a constrained broker.
+The current implemented path is:
 
-Examples:
+```text
+Local client
+    │
+    ▼
+Unix socket `/run/kingai/kingaid.sock`
+    │
+    ▼
+Peer credential identity
+    │
+    ├── Agent Registry
+    ├── Capability Policy
+    ├── Approval Broker
+    ├── Task Graph
+    ├── Memory Store
+    ├── Model Router
+    └── Audit
+```
+
+`kingaid` currently combines several logical services in one process. This is deliberate for the Alpha foundation: service boundaries are architectural boundaries first and process boundaries second.
+
+## 4. Logical services
+
+Long-term logical service model:
+
+- `kingaid` — orchestration and local intelligence hub;
+- `kingai-policyd` — capability/risk/authorization policy;
+- `kingai-approvald` — approval lifecycle and owner decisions;
+- `kingai-execd` — constrained privileged execution broker;
+- `kingai-taskd` — task graph and scheduling;
+- `kingai-modeld` — provider-neutral model routing and health;
+- `kingai-memoryd` — local-first memory and retrieval;
+- `kingai-updated` — signed update, channel and rollback;
+- `kingai-auditd` — append-oriented runtime/security audit;
+- `kingai-deviced` — hardware identity and edge integration.
+
+The current source may keep several of these inside `kingaid` until a real security, lifecycle or scaling reason justifies process separation.
+
+## 5. Identity model
+
+Local management is intentionally not exposed as a generic TCP management service.
+
+The default trust path is:
+
+```text
+Unix connection
+  ↓
+SO_PEERCRED
+  ↓
+Peer UID
+  ↓
+Local username where available
+  ↓
+Agent role binding
+```
+
+Current trusted agent identities include:
+
+```text
+main
+system-ops
+sec-ops
+```
+
+A client JSON payload cannot self-assert `Owner` or `Approved` authorization.
+
+## 6. Capability and risk model
+
+Agents receive capabilities, not blanket root authority.
+
+Current capability examples:
 
 ```text
 filesystem.read
-filesystem.write:/workspace
+network.read
+audit.read
+filesystem.write
 process.execute
-service.restart:nginx
+service.restart
 package.install
 network.modify
 security.modify
 boot.modify
 disk.raw
+trust.modify
 ```
 
 Risk classes:
@@ -74,113 +157,339 @@ L5 destructive/critical
 L6 owner trust root
 ```
 
-L6 is never self-grantable by an agent.
+Unknown capabilities fail closed. L6 authority is never self-grantable by an agent.
 
-### Memory architecture
+## 7. Approval Broker
 
-```text
-M0 context
-M1 working
-M2 task
-M3 episodic
-M4 semantic
-M5 user/organization
-M6 evolution
-```
+D5 introduces a real approval lifecycle rather than allowing a client to set an approval flag.
 
-Each memory record can carry owner, source, confidence, sensitivity, retention, jurisdiction, cloud policy and model policy metadata.
-
-### Model fabric
-
-Provider-neutral routing supports local and remote providers through adapters. The route decision may consider capability, privacy, cost, latency, context length, health, license, region and trust.
-
-### Desktop architecture
-
-Desktop ships one shared Desktop Core with three experience profiles:
-
-- KINGAI Intelligence
-- KINGAI Flow
-- KINGAI Classic
-
-The first-run experience shows visual previews and lets the user choose. The choice is per-user and changeable later.
-
-### Distribution profiles
-
-`profiles/server.yaml`, `profiles/desktop.yaml`, and `profiles/iot.yaml` define image composition. Shared packages remain in the base manifest. Profiles should contain deltas, not duplicated package lists.
-
-### Update architecture
-
-Production direction:
+An approval record is bound to:
 
 ```text
-signed metadata -> staged image -> inactive slot -> verify -> boot -> health gate
-                                                    |            |
-                                                    |            +-> success: commit
-                                                    +--------------> failure: rollback
+Approval ID
+Agent
+Capability
+Target Hash
+Peer UID
+Created At
+Expires At
+Status
+Decision identity
 ```
 
-Stable releases are expected to support A/B or equivalent atomic rollback semantics.
+States:
 
-### Cloud boundary
+```text
+pending
+approved
+denied
+consumed
+expired
+```
 
-Cloud is an accelerator, not a survival dependency. Local agents, policy, memory and offline model support remain available without cloud connectivity.
+Security properties:
 
-Cloudflare is the initial control-plane/storage implementation, but interfaces must remain replaceable.
+- expiration;
+- single-use consumption;
+- target binding;
+- peer binding;
+- agent/capability binding;
+- owner decision requirement;
+- reuse rejection;
+- mismatch rejection.
 
-### Build principles
+The current developer implementation restricts approval decisions to local UID 0.
 
-- pinned source manifests;
+## 8. Task Graph
+
+Task Graph is the persistent contract between future planners and execution adapters.
+
+```text
+Task
+├── ID
+├── Goal
+├── Agent
+├── Peer UID
+├── Status
+├── Steps
+│   ├── Step ID
+│   ├── Title
+│   ├── Capability
+│   ├── Dependencies
+│   ├── Approval ID
+│   └── Status
+├── Result
+├── Error
+├── Created At
+└── Updated At
+```
+
+Task states:
+
+```text
+created
+planning
+waiting
+waiting_approval
+running
+paused
+blocked
+failed
+completed
+cancelled
+```
+
+Invalid transitions fail closed. Non-root local peers cannot transition or list another peer's tasks.
+
+## 9. Memory architecture
+
+Current storage is a safe local persistence foundation. Long-term architecture remains:
+
+```text
+M0 Context
+M1 Working
+M2 Task
+M3 Episodic
+M4 Semantic
+M5 User / Organization
+M6 Evolution
+```
+
+Future record metadata may include:
+
+```text
+owner
+agent
+namespace
+layer
+kind
+sensitivity
+source
+confidence
+importance
+retention
+jurisdiction
+cloud policy
+model policy
+embedding reference
+created / accessed / expiry timestamps
+```
+
+Current `kingaid` service maps memory ownership to local peer UID and exposes put/list/delete operations.
+
+## 10. Model Fabric
+
+KINGAI OS is provider-neutral.
+
+Current candidate signals:
+
+```text
+provider
+local
+available
+capabilities
+priority
+latency
+cost class
+```
+
+Current request constraints:
+
+```text
+capability
+private
+offline
+```
+
+Private/offline requests exclude non-local candidates. If no eligible model exists, routing fails rather than silently violating the request.
+
+Long-term routing adds provider health, region, context length, trust, license, hardware acceleration and policy constraints.
+
+## 11. Execution architecture
+
+The protected next-stage execution path is:
+
+```text
+Task Step
+   ↓
+Declared Capability
+   ↓
+Policy Result
+   ↓
+Approval token if required
+   ↓
+Execution Broker
+   ↓
+Capability-specific handler
+   ↓
+Sandbox / timeout / resource limit
+   ↓
+Result + audit
+```
+
+The Execution Broker must not expose an unrestricted privileged shell API.
+
+Examples of capability-specific handlers:
+
+```text
+service.restart -> validated system service operation
+package.install -> controlled package operation
+filesystem.write -> scoped path operation
+network.modify -> validated network policy operation
+```
+
+Generic arbitrary command execution is treated as a higher-risk separate capability and must not become a shortcut around the policy model.
+
+## 12. Adapter architecture
+
+External runtimes remain adapters rather than defining KINGAI OS identity.
+
+Planned/staged adapters include:
+
+- OpenClaw;
+- MCP;
+- Codex-compatible tool runtimes;
+- browser automation;
+- rootless containers;
+- VM/MicroVM isolation;
+- future device runtimes.
+
+Adapter contract direction:
+
+```text
+Start
+Stop
+Health
+Capabilities
+Execute
+Cancel
+Metrics
+```
+
+## 13. Four platform editions
+
+### Server
+
+Headless OS profile for servers/VPS/AI nodes. Uses bootable OS engineering, installer, recovery and A/B update tracks.
+
+### Desktop
+
+Personal-computer/PC edition. Uses one Plasma 6 Desktop Core with KINGAI Intelligence, Flow and Classic experiences.
+
+### IoT / Edge
+
+Minimal OS profile for edge devices. Generic architecture images require board-specific Device Packs for concrete hardware support.
+
+### Container
+
+Docker/OCI runtime form. It does not require systemd inside the image, runs `kingaid` directly, remains non-root by default and uses persistent state/log volume paths.
+
+Profiles:
+
+```text
+profiles/server.yaml
+profiles/desktop.yaml
+profiles/iot.yaml
+profiles/container.yaml
+```
+
+## 14. Update and recovery architecture
+
+Bootable OS editions follow the production direction:
+
+```text
+signed metadata
+    ↓
+staged image
+    ↓
+inactive slot
+    ↓
+verify
+    ↓
+boot
+    ↓
+health gate
+ ┌──┴─────────────┐
+ │                │
+success         failure
+ │                │
+commit          rollback
+```
+
+Container uses an OCI replacement model rather than pretending A/B disk slots apply inside a container image. Persistent KINGAI state must remain separate from immutable image replacement.
+
+## 15. Cloud boundary
+
+Cloud is an accelerator, not a survival dependency.
+
+Local operation should retain:
+
+- agent identity;
+- policy;
+- approval;
+- task state;
+- local memory;
+- audit;
+- offline-capable model routing.
+
+Cloudflare is an initial control-plane/storage implementation candidate, but interfaces remain replaceable.
+
+## 16. Build and release principles
+
+- pinned/reviewable dependencies;
 - reproducible-oriented builds;
 - deterministic package composition where practical;
 - SBOM and provenance on official artifacts;
 - no unverified model redistribution;
-- release signing outside ordinary web infrastructure;
-- release channels: nightly -> dev -> beta -> rc -> stable.
+- release signing separated from ordinary web infrastructure;
+- fail-closed release gates;
+- staged channels: `nightly -> dev -> beta -> rc -> stable`;
+- hardware support only after hardware-specific validation;
+- public claims must distinguish code, CI, VM/hardware verification, published artifact and production readiness.
 
 ---
 
-## 中文
+# 中文架构摘要
 
-KINGAI OS D4 是一套“主权式分布智能操作系统”架构。Server、Desktop、IoT/Edge 三个版本共享同一套核心，只通过发行 Profile 控制软件包、驱动、界面和运行策略。
-
-### 核心分层
+KINGAI OS D5 采用 **一套核心、四种发行形态**：
 
 ```text
-可选 KINGAI Cloud
-      ↓
 KINGAI Intelligence
-      ↓
+        ↓
 KINGAI Governance
-      ↓
+        ↓
 Execution Fabric
-      ↓
+        ↓
 KINGAI Secure Core
-      ↓
+        ↓
 Linux Kernel
+
+发行形态：
+Server / Desktop / IoT-Edge / Container
 ```
 
-### 核心服务
+Desktop 就是个人电脑 / PC 版本，不另外建立第二套 PC Profile。
 
-规划中的逻辑服务包括：`kingaid`、`kingai-policyd`、`kingai-execd`、`kingai-modeld`、`kingai-memoryd`、`kingai-updated`、`kingai-auditd`、`kingai-deviced`。
+当前 D5 已经真实接通：
 
-第一阶段可以为了简单可靠，把多个逻辑服务合并到较少进程中；先保持清晰的模块边界，再根据负载和安全要求拆分。
+```text
+Unix Peer Identity
+ ↓
+Agent Registry
+ ↓
+Policy
+ ↓
+Approval Broker
+ ↓
+Task Graph
+ ↓
+Memory / Model
+ ↓
+Audit
+```
 
-### 权限模型
+Approval 不再是客户端可以伪造的布尔值，而是具备过期、一次性消费、Peer UID、Agent、Capability 和 Target Hash 强绑定的授权记录。
 
-智能体不能获得无限制 root。所有高权限动作必须通过 Capability + Policy + Executor 三层执行，并按照 L0-L6 风险等级管理。L6 信任根只能由所有者或受控硬件授权，智能体不得自行提升。
+下一阶段 Execution Broker 必须坚持 Capability 专用执行器，不允许演变成“AI 无限 root shell”。
 
-### 记忆模型
-
-记忆分为 Context、Working、Task、Episodic、Semantic、User/Organization、Evolution 七层，并附带敏感等级、来源、置信度、保存期限、地区、云同步策略和模型访问策略。
-
-### 桌面模型
-
-Desktop 只有一个 Desktop Core，提供 KINGAI Intelligence、Flow、Classic 三种桌面体验。首次启动可视化展示后由用户选择，以后可随时切换。
-
-### 更新模型
-
-Stable 方向采用签名元数据、非活动槽写入、完整性验证、启动健康检查和失败自动回滚。云端不可成为系统基本生存依赖。
-
-### 构建原则
-
-固定源版本、减少不可追溯依赖、自动生成 SBOM/provenance、模型许可证门禁、密钥与普通网站隔离、Nightly 到 Stable 的分级发布门禁。
+四个平台共享同一治理模型：服务器、个人电脑、IoT 和 Docker 可以拥有不同的启动、硬件与发布方式，但不能拥有不同的权限安全标准。

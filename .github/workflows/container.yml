@@ -1,0 +1,69 @@
+name: KINGAI OS Container
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/container.yml
+      - container/**
+      - profiles/container.yaml
+      - scripts/build-container.sh
+      - cmd/kingai/**
+      - cmd/kingaid/**
+      - internal/**
+      - configs/**
+      - go.mod
+      - go.sum
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish developer image to GHCR
+        required: true
+        default: false
+        type: boolean
+      tag:
+        description: Container tag when publishing
+        required: false
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  multiarch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare Buildx
+        run: |
+          docker buildx create --name kingai-builder --use
+          docker buildx inspect --bootstrap
+      - name: Verify multi-architecture image build
+        if: ${{ github.event_name == 'pull_request' || !inputs.publish }}
+        run: |
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            --output type=cacheonly \
+            .
+      - name: Login to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Publish developer multi-architecture image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/kingai-os
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            stable|latest|rc|release) echo "protected production-like tag is not allowed from this developer workflow" >&2; exit 2 ;;
+          esac
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=true \
+            --sbom=true \
+            --tag "$IMAGE:$TAG" \
+            --push \
+            .

@@ -1,115 +1,242 @@
 # KINGAI OS
 
-> **Sovereign Distributed Intelligence Operating System**
->
-> AI-native · Agent-native · Local-first · Secure-by-default · Model-neutral · Cloud-neutral
+> **Sovereign Distributed Intelligence Operating System**  
+> **主权式分布智能操作系统**
 
-**Status:** D4 Developer Foundation / Pre-Alpha  
-**Official OS site:** `https://os.kingai.work`  
-**Repository:** `https://github.com/kingaiwork/KINGAIOS`
+AI-native · Agent-native · Local-first · Secure-by-default · Model-neutral · Cloud-neutral
 
-## Official Sources
+**Development line:** D5 Alpha Runtime Foundation / Pre-Alpha  
+**Source version:** `0.1.0-dev`  
+**Official site:** `https://os.kingai.work`  
+**KINGAI:** `https://www.kingai.work`
 
-🌐 **KINGAI OS Website:** https://os.kingai.work  
-🌐 **KINGAI Main Website:** https://www.kingai.work  
-📚 **Full Documentation:** [docs/INDEX.md](docs/INDEX.md)  
-🧠 **Machine-Readable Facts:** [llms.txt](llms.txt)  
-🔎 **GEO Knowledge Graph:** [seo/GEO-KNOWLEDGE-GRAPH.md](seo/GEO-KNOWLEDGE-GRAPH.md)  
-🧬 **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
-🖥️ **Desktop Architecture:** [docs/DESKTOP.md](docs/DESKTOP.md)  
-🛡️ **Security:** [SECURITY.md](SECURITY.md)  
-✉️ **Business & Partnership:** vip@kingai.work
+KINGAI OS is a long-term AI-native operating-system project that moves **agents, memory, tasks, model routing, policy, approvals, audit, recovery and controlled execution** into the operating-system architecture itself.
+
+KINGAI OS 不是在 Linux 上简单放一个聊天机器人，而是把 **智能体、记忆、任务、模型路由、权限治理、审批、审计、恢复与受控执行** 逐步建设成系统原生能力。
+
+> **Intelligence may be autonomous. Authority remains controlled, auditable and revocable.**  
+> **智能可以自主，权限必须始终可控、可审计、可撤销。**
+
+## Official documentation / 官方资料
+
+- [Verified Status / 已验证状态](docs/STATUS.md)
+- [Architecture / 系统架构](docs/ARCHITECTURE.md)
+- [Platform Editions / 四个平台](docs/PLATFORMS.md)
+- [Roadmap / 路线图](docs/ROADMAP.md)
+- [Building / 构建说明](docs/BUILDING.md)
+- [Desktop Architecture](docs/DESKTOP.md)
+- [Device Packs](docs/DEVICE-PACKS.md)
+- [Release Policy](docs/RELEASE-POLICY.md)
+- [Security](SECURITY.md)
+- [Machine-readable facts](llms.txt)
+- [GEO Knowledge Graph](seo/GEO-KNOWLEDGE-GRAPH.md)
+
+Business & partnership: `vip@kingai.work`
 
 ---
 
 # English
 
-## The AI-native operating system for the next generation of intelligent computing
+## 1. What KINGAI OS is
 
-KINGAI OS is a long-term operating-system project from KINGAI, designed to deeply integrate intelligence, memory, agents, policy, security, execution, model routing, updates and device management into one coherent Linux platform.
+KINGAI OS is a Linux-based intelligent operating-system architecture developed by KINGAI. Its goal is to make intelligence a governed system capability rather than an unrestricted application sitting above the operating system.
 
-It integrates advanced technologies from the global Linux, AI, cloud-native, cybersecurity and software-supply-chain ecosystems while preserving a sovereign KINGAI architecture that is not locked to any single model provider, cloud vendor, agent framework or execution engine.
+A KINGAI task is intended to move through a controlled lifecycle:
 
-> **Intelligence may be autonomous. Authority remains controlled, auditable and revocable.**
+```text
+Goal
+  ↓
+Planner
+  ↓
+Task Graph
+  ↓
+Capability Policy
+  ↓
+Approval when required
+  ↓
+Constrained Execution
+  ↓
+Result / Health Check
+  ↓
+Audit
+  ↓
+Memory
+```
 
-## Editions
+The current D5 line has connected the Policy, Approval, Task, Memory, Model and Audit foundations. A privileged constrained Execution Broker is the next protected runtime milestone and is not claimed production-complete yet.
+
+## 2. One core, four official platform editions
+
+KINGAI OS does not maintain four unrelated products. All editions share the same KINGAI governance and intelligence core.
+
+```text
+                        KINGAI Core
+              Intelligence · Governance · Runtime
+      Policy · Approval · Task · Memory · Model · Audit
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+       Server              Desktop             IoT/Edge
+          │                   │                   │
+          └───────────────────┴──────────────┬────┘
+                                             │
+                                          Container
+                                        Docker / OCI
+```
 
 ### KINGAI OS Server
 
-Headless edition for VPS, servers, AI nodes, enterprise automation and distributed agent infrastructure.
+For VPS, physical servers, AI nodes, enterprise automation and distributed agent infrastructure.
+
+Profile: `profiles/server.yaml`
+
+Current direction:
+
+- headless by default;
+- amd64 and arm64 rootfs paths;
+- SSH/cloud-init friendly;
+- optional local AI runtime;
+- rootless container support direction;
+- shared Policy / Approval / Task / Memory / Model / Audit runtime;
+- installer, update, rollback and recovery engineering tracks.
+
+The already-published Server Developer Preview is amd64. Additional architecture publication is gated separately from rootfs build support.
 
 ### KINGAI OS Desktop
 
-One optimized Desktop ISO with a first-run visual experience selector:
+**Desktop is the personal-computer / PC edition. There is no separate PC profile.**
 
-- **KINGAI Intelligence** — KINGAI's AI-first desktop centered on agents, memory, tasks, projects, knowledge and automation.
-- **KINGAI Flow** — a clean modern spatial workflow with dock-oriented interaction.
-- **KINGAI Classic** — a familiar taskbar and application-menu workflow for traditional PC users.
+Profile: `profiles/desktop.yaml`
 
-Desktop experiences share one common Desktop Core and can be changed later without reinstalling the operating system.
+For home PCs, office PCs, developer machines, creator workstations and local-AI workstations.
+
+Current Desktop Core:
+
+- Plasma 6;
+- KWin Wayland;
+- SDDM;
+- Qt 6;
+- KINGAI Welcome;
+- KINGAI Agent Center.
+
+Three switchable experiences share one Desktop Core:
+
+1. **KINGAI Intelligence** — AI-first workspace centered on tasks, agents, memory, models, knowledge and automation;
+2. **KINGAI Flow** — modern spatial workflow and dock-oriented interaction;
+3. **KINGAI Classic** — familiar taskbar/application-menu workflow.
+
+Current Desktop architecture target is amd64. ARM64 Desktop remains a future hardware-validation track.
 
 ### KINGAI OS IoT / Edge
 
-Minimal edition for ARM64/x86-64 edge systems, robotics, gateways, embedded AI and intelligent devices.
+For gateways, edge AI, embedded devices, robotics and intelligent hardware.
 
-## D4 Architecture
+Profile: `profiles/iot.yaml`
 
-```text
-User / Organization
-        │
-        ▼
-KINGAI Intelligence
-Brain · Planner · Memory · Knowledge · Evolution
-        │
-        ▼
-KINGAI Governance
-Policy · Capability · Risk · Identity · Audit
-        │
-        ▼
-Execution Fabric
-Native · OpenClaw · MCP · Codex · Browser · Containers · VM
-        │
-        ▼
-KINGAI Secure Core
-systemd · cgroup v2 · AppArmor · seccomp · Landlock
-        │
-        ▼
-Linux Kernel
-```
+Generic architecture build paths:
 
-## Core principles
+- arm64;
+- amd64.
 
-- **Local-first** — core intelligence can continue operating without cloud connectivity.
-- **Agent-native** — agents are first-class system actors governed by explicit capabilities and policy.
-- **Model-neutral** — local and cloud models are interchangeable through KINGAI Model Fabric.
-- **Cloud-neutral** — cloud infrastructure enhances the system but is not required for local survival.
-- **Least privilege** — AI agents never receive unrestricted authority by default.
-- **Controlled evolution** — autonomous improvements pass sandboxing, tests, policy and deployment gates.
-- **Secure updates** — official releases are designed for signatures, SBOM, provenance, integrity verification and rollback.
-- **Privacy-first memory** — sensitive memory can remain local with explicit synchronization policy.
-- **Replaceable execution engines** — OpenClaw, MCP, Codex, browsers and other runtimes remain adapters rather than the identity of KINGAI OS.
+The Edge edition keeps the same governance concepts while reducing the OS footprint. Hardware support is deliberately separated from generic architecture support: Raspberry Pi, Jetson and industrial boards require validated Device Packs before they are listed as officially supported hardware.
 
-## KINGAI Intelligence Layer
+### KINGAI OS Container
+
+For Docker/OCI, CI, cloud services, homelab environments and service composition.
+
+Profile: `profiles/container.yaml`  
+Dockerfile: `container/Dockerfile`
+
+Current Container design:
+
+- linux/amd64 and linux/arm64 Buildx targets;
+- no systemd requirement in the image;
+- `kingaid` runs directly as container entrypoint;
+- non-root `_kingai` daemon by default;
+- Unix-socket management API;
+- no management TCP port exposed by default;
+- persistent `/var/lib/kingai` and `/var/log/kingai` volume targets;
+- Policy, Approval, Task Graph, Memory, Model Router and Audit remain available.
+
+Container is a deployment form of KINGAI Runtime. It does not replace the bootable Server/Desktop/IoT operating-system editions.
+
+## 3. D5 runtime architecture
 
 ```text
-KINGAI Brain
-├── Planner
-├── Memory Fabric
-├── Agent Manager
-├── Model Fabric
-├── Knowledge
-├── Task Graph
-└── Controlled Evolution
+User / Organization / Device
+            │
+            ▼
+┌──────────────────────────────────────────┐
+│ KINGAI Intelligence                      │
+│ Brain · Planner · Tasks · Knowledge      │
+│ Memory · Models · Controlled Evolution   │
+└───────────────────┬──────────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────────┐
+│ KINGAI Governance                        │
+│ Identity · Capability · Policy           │
+│ Approval · Risk · Audit                  │
+└───────────────────┬──────────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────────┐
+│ Execution Fabric                         │
+│ Native · OpenClaw · MCP · Codex          │
+│ Browser · Rootless Container · VM        │
+└───────────────────┬──────────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────────┐
+│ KINGAI Secure Core                       │
+│ systemd · cgroup v2 · AppArmor           │
+│ seccomp · Landlock · Unix peer identity  │
+└───────────────────┬──────────────────────┘
+                    │
+                    ▼
+                Linux Kernel
 ```
 
-The goal is not to place an AI chatbot on top of Linux. The goal is to make intelligence a governed operating-system capability.
+Cloud services may accelerate the system, but they are not intended to become a survival dependency for local Policy, Memory, Task or offline-capable intelligence.
 
-## Agent security
+## 4. Current D5 runtime capabilities
 
-Agents operate through capabilities instead of unrestricted root shells.
+### `kingaid`
+
+The core daemon uses a local Unix socket instead of a TCP management listener. Peer identity is derived from Unix peer credentials.
+
+Current services exposed through the daemon include:
+
+- health;
+- sanitized public status;
+- Agent Registry;
+- capability-policy evaluation;
+- Approval Broker;
+- local Memory service;
+- Model Router;
+- Task Graph;
+- Audit.
+
+### Agent identity
+
+The runtime currently separates:
+
+```text
+main
+system-ops
+sec-ops
+```
+
+Privileged roles are bound to trusted local identities or root. A JSON request cannot simply claim a privileged role and receive authority.
+
+### Capability Policy
+
+Current capability classes include:
 
 ```text
 filesystem.read
+network.read
+audit.read
 filesystem.write
 process.execute
 service.restart
@@ -118,202 +245,410 @@ network.modify
 security.modify
 boot.modify
 disk.raw
+trust.modify
 ```
 
-High-impact actions are evaluated through KINGAI Policy and Capability Broker before privileged execution.
+Unknown capabilities fail closed. Higher-risk capabilities require approval. Trust-root modification remains owner-only.
 
-## Model Fabric
+### Approval Broker
 
-KINGAI OS is designed to support local, cloud, hybrid and offline-fallback models without binding the system to one vendor.
+Approval records are bound to:
 
-Routing can consider capability, privacy, latency, cost, availability, context length, region, trust and license status.
+- Agent;
+- Capability;
+- Target Hash;
+- Peer UID;
+- expiration time.
 
-Large third-party model weights are not embedded in the default ISO unless redistribution rights are explicitly verified.
+Approvals can be pending, approved, denied, consumed or expired. Approved records are one-time tokens. Reuse and binding mismatch fail closed.
 
-## Distribution targets
+This closes a critical security gap: clients still cannot self-assert `Owner` or `Approved`, but there is now a controlled path for a real owner decision to become a single-use policy authorization.
+
+### Task Graph
+
+Persistent task lifecycle states:
+
+```text
+created
+planning
+waiting
+waiting_approval
+running
+paused
+blocked
+failed
+completed
+cancelled
+```
+
+Tasks are bound to the local peer that created them. Steps may include dependencies, capabilities and approval references.
+
+The Task Graph is the base contract for future planners and execution adapters.
+
+### Memory
+
+The current local-first Memory store supports:
+
+- owner namespace;
+- kind;
+- sensitivity;
+- creation timestamp;
+- optional expiry;
+- JSON payload;
+- list and delete operations.
+
+`kingaid` maps memory ownership to the Unix peer UID so ordinary local clients do not share one global memory namespace by default.
+
+Long-term Memory Fabric remains designed around:
+
+```text
+M0 Context
+M1 Working
+M2 Task
+M3 Episodic
+M4 Semantic
+M5 User / Organization
+M6 Evolution
+```
+
+### Model Fabric
+
+The current model router evaluates:
+
+- requested capability;
+- local vs remote;
+- availability;
+- priority;
+- latency;
+- cost class;
+- private mode;
+- offline mode.
+
+Private and offline requests reject non-local candidates. If no candidate is valid, the service fails closed rather than silently choosing an incompatible model.
+
+Provider adapters, provider health, region, license and richer hardware signals are later D5 work.
+
+### Audit
+
+Security-relevant runtime decisions are appended to the audit log. Policy audit records use target hashes rather than storing raw target values where the raw target is not necessary.
+
+### CLI
+
+```text
+kingai version
+kingai status [--json]
+kingai doctor [--json] [--repair-safe]
+kingai policy check <capability> [target]
+
+kingai approval request <agent> <capability> [target]
+kingai approval list
+kingai approval approve <id>
+kingai approval deny <id>
+
+kingai memory put <kind> <json>
+kingai memory list
+kingai memory delete <id>
+
+kingai model select <capability> [--private] [--offline]
+
+kingai task create <agent> <goal...>
+kingai task list
+kingai task transition <id> <status>
+
+kingai desktop list
+kingai desktop show
+kingai desktop set <kingai-intelligence|kingai-flow|kingai-classic>
+kingai desktop apply
+```
+
+Approval decisions are intentionally privileged in the current developer implementation.
+
+## 5. OS engineering foundation
+
+The repository contains engineering tracks for:
+
+- Ubuntu 26.04-based rootfs composition;
+- Hybrid Live ISO;
+- BIOS/UEFI boot validation;
+- installer planning and execution components;
+- Recovery environment;
+- TUF client;
+- pinned trust-root handling;
+- A/B slot update state;
+- health-gated update confirmation;
+- rollback drills;
+- Secure Boot VM verification;
+- package inventory;
+- SPDX 2.3 SBOM;
+- release manifests and checksums.
+
+Current machine-readable release gate truth lives in `release/gates.json`.
+
+A VM-verified capability is not automatically a production release claim.
+
+## 6. Security model
+
+KINGAI OS is intentionally designed around the statement:
+
+> powerful intelligence does not require unlimited authority.
+
+The long-term execution path is:
+
+```text
+Agent Identity
+  ↓
+Declared Capability
+  ↓
+Central Policy
+  ↓
+Owner Approval when required
+  ↓
+Constrained Executor
+  ↓
+Sandbox / Resource Limits
+  ↓
+Audit / Health / Rollback
+```
+
+The future Execution Broker must not become a generic “AI root shell.” Privileged actions are expected to be capability-specific and constrained.
+
+## 7. Build and test
+
+Core:
+
+```bash
+make check
+make build
+```
+
+Server:
+
+```bash
+sudo bash scripts/build-rootfs.sh server amd64 dist
+sudo bash scripts/build-live-iso.sh server dist
+```
+
+Desktop / personal computer:
+
+```bash
+sudo bash scripts/build-rootfs.sh desktop amd64 dist
+sudo bash scripts/build-live-iso.sh desktop dist
+```
+
+IoT / Edge:
+
+```bash
+sudo bash scripts/build-iot-image.sh arm64 dist
+sudo bash scripts/build-iot-image.sh amd64 dist
+```
+
+Docker / OCI:
+
+```bash
+docker build -f container/Dockerfile -t kingai-os:dev .
+```
+
+or:
+
+```bash
+KINGAI_CONTAINER_PLATFORMS=linux/amd64,linux/arm64 \
+  bash scripts/build-container.sh
+```
+
+Foundation CI currently validates Go build/test/vet, configuration, release controls, local IPC runtime behavior and the Container image startup path.
+
+## 8. Release channels
+
+```text
+nightly -> dev -> beta -> rc -> stable
+```
+
+Stable remains blocked until the required security, installation, update, rollback, recovery, signing, supply-chain, hardware and governance gates have passed.
+
+## 9. Artifact families
 
 ```text
 KINGAI-OS-Server-<version>-amd64.iso
-KINGAI-OS-Server-<version>-arm64.iso
 KINGAI-OS-Desktop-<version>-amd64.iso
-KINGAI-OS-IoT-<version>-arm64.img.xz
+KINGAI-OS-IoT-<version>-<arch>.img.xz
+ghcr.io/kingaiwork/kingai-os:<version>
 ```
 
-Engineering size targets:
+Additional architecture/artifact combinations are published only after dedicated validation.
 
-- Server: **~1.2–1.6 GB**
-- Desktop: **~2.8–3.5 GB**
-- IoT / Edge compressed image: **~0.4–0.7 GB**
+## 10. What is not production-complete yet
 
-Actual release sizes are measured by the build pipeline.
+The project deliberately does **not** claim the following as complete:
 
-## Downloads and large artifacts
+- final constrained privileged Execution Broker;
+- production AppArmor/seccomp/Landlock agent profiles;
+- automatic Planner/task-step scheduler;
+- production OpenClaw/MCP/Codex/browser adapters;
+- full M0-M6 memory retrieval/promotion/evolution;
+- production model-provider adapters and model health service;
+- production TUF repository and threshold-key operations;
+- production Secure Boot signing and offline key custody;
+- production R2 release delivery;
+- branch/release governance;
+- board-specific Edge Device Packs;
+- final CVE/legal review;
+- Stable lifecycle commitment.
 
-GitHub is the source-code and release-metadata home.
-
-```text
-<= 2 GiB  → GitHub Releases when appropriate
->  2 GiB  → KINGAI object storage / Cloudflare R2
-```
-
-Public distribution is unified through:
-
-```text
-https://os.kingai.work/download
-https://os.kingai.work/updates
-https://os.kingai.work/repo
-```
-
-Official images are designed to ship with checksums, signatures, SBOM and build provenance.
-
-## Release channels
-
-```text
-nightly → dev → beta → rc → stable
-```
-
-Stable releases must pass build, security, install, upgrade, rollback and recovery gates before signing.
-
-## Current milestone
-
-**KINGAI OS 0.1 Developer Foundation** is establishing:
-
-- shared Server / Desktop / IoT build profiles;
-- KINGAI CLI and core runtime foundation;
-- agent capability and policy architecture;
-- model-neutral and local-first interfaces;
-- secure release pipeline;
-- optimized image generation;
-- large-artifact R2 publishing;
-- KINGAI Desktop Experience framework.
-
-This repository is under active development and does not yet represent a production-ready Stable ISO.
+See [docs/STATUS.md](docs/STATUS.md) for current verified truth.
 
 ---
 
 # 中文
 
-## 官方入口
+## KINGAI OS 的核心定位
 
-🌐 **KINGAI OS 官网：** https://os.kingai.work  
-🌐 **KINGAI 主站：** https://www.kingai.work  
-📚 **完整文档：** [docs/INDEX.md](docs/INDEX.md)  
-🧠 **机器可读事实：** [llms.txt](llms.txt)  
-🔎 **GEO 知识图谱：** [seo/GEO-KNOWLEDGE-GRAPH.md](seo/GEO-KNOWLEDGE-GRAPH.md)  
-🧬 **系统架构：** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
-🖥️ **桌面架构：** [docs/DESKTOP.md](docs/DESKTOP.md)  
-🛡️ **安全：** [SECURITY.md](SECURITY.md)  
-✉️ **商务与合作：** vip@kingai.work
+KINGAI OS 的目标不是“做一个带 AI 的 Ubuntu”，而是形成一套真正的 **AI 原生操作系统治理与执行架构**。
 
-## 面向下一代智能计算的 AI 原生操作系统
+传统系统主要管理：
 
-KINGAI OS 是 KINGAI 面向未来长期发展的 AI 原生操作系统项目，将智能、记忆、智能体、权限治理、安全、执行、模型路由、系统更新与设备管理深度整合为统一 Linux 平台。
+```text
+用户
+文件
+进程
+网络
+应用
+硬件
+权限
+```
 
-项目持续整合全球 Linux、人工智能、云原生、网络安全和软件供应链领域成熟先进的开放技术，同时保持 KINGAI 自主架构，不被任何单一模型厂商、云平台、智能体框架或执行引擎绑定。
+KINGAI OS 在这些能力之上继续增加：
 
-> **智能可以自主，权限必须始终可控、可审计、可撤销。**
+```text
+Agent Identity
+Capability Policy
+Approval
+Task Graph
+Memory Fabric
+Model Fabric
+Audit
+Controlled Execution
+Recovery / Rollback
+Controlled Evolution
+```
 
-## 三个正式版本
+最终希望用户拥有的是一台：
+
+> **会理解、会记忆、会规划、会执行，但不会越权的智能计算系统。**
+
+## 四个正式版本
 
 ### KINGAI OS Server
 
-无桌面版本，面向 VPS、服务器、AI 节点、企业自动化和分布式智能体基础设施。
+面向服务器、VPS、企业自动化、AI 节点与分布式智能体。
 
 ### KINGAI OS Desktop
 
-只维护一个优化后的 Desktop ISO。第一次进入系统时提供可视化桌面体验展示，由用户选择：
+**Desktop 就是个人电脑 / PC 版本。**
 
-- **KINGAI Intelligence** — KINGAI 原生 AI 桌面，以智能体、记忆、任务、项目、知识和自动化为核心。
-- **KINGAI Flow** — 现代化空间工作流和 Dock 风格交互。
-- **KINGAI Classic** — 面向传统 PC 用户的任务栏与应用菜单工作流。
+不另外维护 `PC Profile`。
 
-三个体验共享同一套 KINGAI Desktop Core，进入系统后仍可自由切换，无需重新安装系统。
+覆盖家庭电脑、办公电脑、开发者电脑、创作者工作站和本地 AI 工作站。
+
+三套桌面体验：
+
+- KINGAI Intelligence；
+- KINGAI Flow；
+- KINGAI Classic。
 
 ### KINGAI OS IoT / Edge
 
-面向 ARM64/x86-64 IoT、机器人、边缘网关、嵌入式 AI 和智能终端的精简版本。
+面向 ARM64/x86-64 边缘设备、网关、机器人和嵌入式智能。
 
-## D4 核心架构
+通用架构镜像不代表自动支持所有硬件，具体 Raspberry Pi、Jetson、工业设备必须有真实 Device Pack 验证。
 
-```text
-用户 / 企业
-    │
-    ▼
-KINGAI Intelligence
-Brain · Planner · Memory · Knowledge · Evolution
-    │
-    ▼
-KINGAI Governance
-Policy · Capability · Risk · Identity · Audit
-    │
-    ▼
-Execution Fabric
-Native · OpenClaw · MCP · Codex · Browser · Containers · VM
-    │
-    ▼
-KINGAI Secure Core
-systemd · cgroup v2 · AppArmor · seccomp · Landlock
-    │
-    ▼
-Linux Kernel
-```
+### KINGAI OS Container
 
-## 核心原则
+面向 Docker / OCI / 云端容器 / CI / Homelab。
 
-- **Local-first**：即使云端不可用，核心智能仍可在本机运行。
-- **Agent-native**：智能体成为操作系统原生能力，并受 Policy 与 Capability 管理。
-- **Model-neutral**：本地模型与云模型通过 KINGAI Model Fabric 自由替换。
-- **Cloud-neutral**：云端用于增强，而不是系统生存依赖。
-- **Least privilege**：AI 默认不拥有无限 root 权限。
-- **Controlled evolution**：自主升级必须经过沙箱、测试、策略和发布门禁。
-- **Secure updates**：正式发行支持签名、SBOM、Provenance、完整性检查与回滚。
-- **Privacy-first memory**：敏感记忆默认可以只保存在本地。
-- **执行引擎可替换**：OpenClaw、MCP、Codex、Browser 等只是 Adapter。
+特点：
 
-## 镜像目标
+- amd64 / arm64 Buildx；
+- 默认非 root 运行 `kingaid`；
+- 不要求 systemd；
+- 默认不开放管理 TCP；
+- 保留 Policy / Approval / Task / Memory / Model / Audit；
+- 数据通过 `/var/lib/kingai` 和 `/var/log/kingai` 持久化。
+
+## 当前 D5 已经接通什么
 
 ```text
-KINGAI-OS-Server-<version>-amd64.iso
-KINGAI-OS-Server-<version>-arm64.iso
-KINGAI-OS-Desktop-<version>-amd64.iso
-KINGAI-OS-IoT-<version>-arm64.img.xz
+Agent
+ ↓
+Policy
+ ↓
+Approval
+ ↓
+Task Graph
+ ↓
+Memory / Model
+ ↓
+Audit
 ```
 
-工程体积目标：
+Approval 已经具备：
 
-- Server：**约 1.2–1.6 GB**
-- Desktop：**约 2.8–3.5 GB**
-- IoT / Edge 压缩镜像：**约 0.4–0.7 GB**
+- 过期；
+- 拒绝；
+- 批准；
+- 一次性消费；
+- Agent + Capability + Target Hash + Peer UID 强绑定。
 
-最终以自动构建后的实际体积为准。
+Task 已经具备：
 
-## ISO 与大型文件
+- 持久化；
+- UID 隔离；
+- Step；
+- Dependency；
+- 状态机；
+- Approval 关联基础。
 
-GitHub 主要保存源码、构建系统、文档和版本元数据。
+Memory 已经通过 `kingaid` 成为本机服务，并按调用者 UID 隔离。
+
+Model Router 已经成为 `kingaid` 的正式服务入口，Private/Offline 请求会排除非本地模型。
+
+CLI 已经可以直接管理 Approval、Memory、Model、Task。
+
+## 下一核心目标
+
+下一步不是继续堆概念，而是完成真正的：
 
 ```text
-<= 2 GiB  → 按需要使用 GitHub Releases
->  2 GiB  → KINGAI 对象存储 / Cloudflare R2
+Planner
+ ↓
+Task Graph
+ ↓
+Policy
+ ↓
+Approval
+ ↓
+Execution Broker
+ ↓
+Sandbox
+ ↓
+Result
+ ↓
+Audit
+ ↓
+Memory
 ```
 
-用户统一通过：
+其中 Execution Broker 必须是受限 Capability Broker，不能变成 AI 的无限制 root shell。
 
-```text
-https://os.kingai.work/download
-https://os.kingai.work/updates
-https://os.kingai.work/repo
-```
+## 项目状态原则
 
-获取正式镜像和更新。
+KINGAI OS 坚持区分：
 
-## 当前阶段
+1. 代码存在；
+2. CI 通过；
+3. VM/硬件验证；
+4. Artifact 已发布；
+5. Production Ready。
 
-**KINGAI OS 0.1 Developer Foundation** 正在建立统一构建 Profile、KINGAI CLI、Agent Capability/Policy、模型中立接口、安全发布体系、精简镜像、R2 大文件发布以及 KINGAI Desktop Experience 框架。
+这五个状态不是同一件事。
 
-当前仍属于开发基础阶段，尚未宣称存在生产级 Stable ISO。
-
----
-
-**KINGAI OS — Intelligence that can act, under authority that remains controlled.**
-
-> **Base notice / 底层说明：** KINGAI OS is independently developed on the Ubuntu 26.04 LTS technology base and is distributed in accordance with applicable open-source licenses and trademark rules. / KINGAI OS 基于 Ubuntu 26.04 LTS 技术底座进行独立二次开发与发行，并遵守适用的开源许可证与商标规则。
+真实状态以 `docs/STATUS.md` 与 `release/gates.json` 为准。

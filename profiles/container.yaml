@@ -1,18 +1,20 @@
-profile: iot
-name: KINGAI OS IoT / Edge
+profile: container
+name: KINGAI OS Container
 version_source: VERSION
 base:
   lineage: ubuntu-26.04-lts
   architecture:
-    - arm64
     - amd64
+    - arm64
 features:
   desktop: false
   headless: true
+  systemd_required: false
+  docker: true
+  oci: true
   local_ai_runtime: optional
-  device_packs: true
-  ota_updates: true
-  recovery: true
+  persistent_state: true
+  unix_socket_api: true
 kingai:
   cli: true
   daemon: true
@@ -21,12 +23,12 @@ kingai:
   task_graph: true
   model_fabric: true
   memory_fabric: true
-  edge_agent_runtime: true
+  agent_runtime: true
   audit: true
 size_budget_mib:
-  target: 600
-  warning: 750
-  hard: 900
+  target: 300
+  warning: 450
+  hard: 650
 artifact:
-  format: img.xz
-  name: KINGAI-OS-IoT-${VERSION}-${ARCH}.img.xz
+  format: oci-image
+  name: ghcr.io/kingaiwork/kingai-os:${VERSION}

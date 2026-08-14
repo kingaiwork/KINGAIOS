@@ -1,189 +1,307 @@
 # KINGAI OS — Verified Project Status
 
-**Status date:** 2026-08-12  
-**Development line:** D4 Developer Foundation / Pre-Alpha
+**Status date:** 2026-08-14  
+**Development line:** D5 Alpha Runtime Foundation / Pre-Alpha  
+**Source version:** `0.1.0-dev`
 
-## English
+This file is the human-readable status ledger. Machine-readable release truth is in [`release/gates.json`](../release/gates.json).
 
-This document separates what KINGAI OS has **actually verified** from what remains a roadmap or protected release gate.
+KINGAI OS intentionally distinguishes five states:
 
-### Published
+1. source code exists;
+2. source code passes CI;
+3. a VM/hardware/runtime path is verified;
+4. an artifact is published;
+5. a capability is production-ready.
 
-#### KINGAI OS Server Developer Preview
+A later state is never inferred from an earlier one.
+
+## Published developer artifact
+
+### KINGAI OS Server Developer Preview
 
 - Release: `v0.1.0-dev-server-dev.2`
 - Artifact: `KINGAI-OS-Server-0.1.0-dev-amd64.iso`
-- Size: `1,092,444,160 bytes` (approximately 1.02 GiB)
-- Distribution: GitHub Pre-release because the artifact is below the 2 GiB large-artifact routing threshold.
-- Assets: ISO, SHA-256 checksum and machine-readable manifest.
-- Install-to-disk: **disabled** in this Developer Foundation image.
-- Production Secure Boot signing: **not enabled yet**.
+- Size: `1,092,444,160 bytes` (about 1.02 GiB)
+- Assets: ISO, SHA-256 checksum and machine-readable manifest
+- Install-to-disk in this published preview: **disabled**
+- Production Secure Boot signing: **not enabled**
 
-The release was rebuilt from repository source in GitHub Actions and passed core tests, rootfs construction, ownership validation, ISO checksum/manifest validation and QEMU BIOS boot verification before publication.
+The published image predates part of the newer D5 runtime work. A published older Developer Preview must not be described as containing every capability now present on the development branch.
 
-### Verified engineering foundations
+## Verified D5 runtime foundation
 
-#### Core / Security
+Foundation CI has verified the connected D5 local runtime path.
 
-- `kingai`, `kingaid`, `kingai-update`, `kingai-installer` build successfully.
-- Go unit tests and `go vet` are CI gates.
-- `kingaid` uses local Unix-socket IPC rather than opening a TCP management port.
-- Capability policy defaults to deny unknown capabilities.
-- High-risk capabilities require explicit approval; trust-root modification is owner-only.
-- Client JSON cannot self-assert `Owner` or `Approved` authorization.
-- Local peer identity is derived from Unix peer credentials.
-- `main`, `system-ops` and `sec-ops` are separated by the agent registry and trusted local identities.
-- Audit events record policy decisions without storing raw target values.
-- Desktop-readable public status is sanitized and excludes prompts, memory content, API keys, passwords, tokens and secrets.
+### Core daemon / trust boundary
 
-#### Server
+Verified:
 
-- Ubuntu 26.04 based KINGAI Server rootfs: verified.
-- KINGAI identity (`os-release`, MOTD, issue): verified.
-- Linux kernel/initramfs inclusion: verified.
-- `kingaid` systemd enablement: verified.
-- Hybrid Live ISO generation: verified.
-- Casper filesystem/checksum metadata: verified.
-- QEMU BIOS boot to `KINGAI OS 0.1 Developer Foundation`: verified.
-- Build-host UID/GID leakage checks: verified.
+- `kingaid` local Unix-socket API;
+- Unix peer credential identity;
+- Agent Registry and local role binding;
+- capability policy evaluation;
+- fail-closed unknown peer identity;
+- sanitized public status;
+- append-oriented audit logging;
+- CLI integration.
 
-#### Desktop
+### Approval Broker
 
-- Ubuntu 26.04 Desktop rootfs: verified.
-- Plasma 6 / KWin Wayland / SDDM / Qt 6 desktop foundation: verified.
-- KINGAI Welcome first-run selector: included.
-- KINGAI Intelligence / Flow / Classic Plasma 6 package manifests: verified.
-- Switchable desktop layout scripts: included.
-- KINGAI Agent Center package and sanitized local status integration: included and under CI validation.
-- Full Desktop Live ISO boot/size validation: **in progress**.
+Implemented and verified by unit/integration tests:
 
-#### IoT / Edge
+- persistent approval requests;
+- pending / approved / denied / consumed / expired states;
+- approval expiry;
+- one-time consumption;
+- binding to Agent + Capability + Target Hash + Peer UID;
+- binding-mismatch rejection;
+- owner decision endpoint restricted to local UID 0;
+- client JSON still cannot self-assert `Owner` or `Approved`;
+- consumed approval reuse is rejected.
 
-- amd64 generic KINGAI Edge rootfs/image pipeline: verified.
-- arm64 generic KINGAI Edge rootfs/image pipeline: verified.
-- `.img.xz` checksum and manifest validation: verified.
-- Hard compressed-image budget gate: enabled.
-- Generic Edge artifact intentionally reports `bootable=false` and `device_pack_required=true`.
-- Board-specific bootable Device Packs (for concrete Raspberry Pi/Jetson/industrial hardware families): not yet released.
+### Task Graph
 
-### Supply-chain / compliance foundation
+Implemented and verified:
 
-- Full Apache-2.0 text for KINGAI-authored repository code.
-- NOTICE and third-party policy included.
-- Installed package inventory is embedded in rootfs builds.
-- Deterministic SPDX 2.3 package SBOM generation has been added to the current build line.
-- Future Live ISO builds export the SPDX SBOM both inside the ISO and as a release-side artifact.
-- Unknown package-license conclusions are intentionally represented as `NOASSERTION` instead of being guessed.
-- Release channels are gated as `dev → beta → rc → stable`.
+- persistent tasks;
+- peer UID ownership;
+- task steps;
+- dependency validation;
+- capability/approval reference fields;
+- lifecycle states: `created`, `planning`, `waiting`, `waiting_approval`, `running`, `paused`, `blocked`, `failed`, `completed`, `cancelled`;
+- invalid state-transition rejection;
+- peer-isolated list/transition behavior.
 
-### Protected / incomplete gates
+### Memory service
 
-The following are deliberately **not claimed as complete**:
+Existing local-first FileStore is connected to `kingaid` and verified for:
 
-- production Secure Boot signing and offline release-key custody;
-- destructive install-to-disk execution;
-- A/B slot activation and automatic rollback in production;
-- full recovery-environment validation;
-- final TUF root/threshold key operations;
-- production vulnerability/CVE automation and final legal review;
-- R2 large-artifact publishing credentials in GitHub Secrets;
-- board-specific IoT/Edge boot packs;
-- Stable release lifecycle commitment.
+- put;
+- list;
+- delete implementation path;
+- per-peer owner namespace;
+- valid JSON payload requirement;
+- restrictive state-directory permissions.
 
-RC and Stable publication remain blocked until their release gates are implemented and verified.
+The complete M0-M6 retrieval/promotion/evolution design remains future work; current storage is a persistent local foundation.
+
+### Model service
+
+Existing provider-neutral selection is connected to `kingaid`.
+
+Verified routing behavior includes:
+
+- capability filter;
+- local/remote classification;
+- availability;
+- priority;
+- latency;
+- cost class;
+- private-mode local enforcement;
+- offline-mode local enforcement;
+- fail-closed response when no eligible model exists.
+
+Production provider adapters and provider-health telemetry are not yet claimed complete.
+
+## Four official platform forms
+
+KINGAI OS now maintains one shared core with four official distribution forms:
+
+```text
+Server
+Desktop      # personal computer / PC edition
+IoT / Edge
+Container    # Docker / OCI
+```
+
+Desktop is the PC edition; there is no separate `pc` profile.
+
+### Server
+
+Verified engineering foundations include:
+
+- Ubuntu 26.04-based Server rootfs;
+- KINGAI system identity;
+- kernel/initramfs composition;
+- `kingaid` systemd enablement;
+- Hybrid Live ISO;
+- BIOS/UEFI VM validation tracks;
+- ownership/UID leakage checks;
+- installer VM validation;
+- update/rollback VM validation.
+
+Generic amd64/arm64 rootfs paths exist, but published boot artifact support is architecture-specific and must be verified separately.
+
+### Desktop / personal computer
+
+Verified engineering foundations include:
+
+- Ubuntu 26.04 Desktop rootfs;
+- Plasma 6 / KWin Wayland / SDDM / Qt 6;
+- KINGAI Welcome;
+- KINGAI Intelligence / Flow / Classic layouts;
+- KINGAI Agent Center;
+- Desktop Live VM validation;
+- automated desktop-frame capture tooling.
+
+Desktop remains actively developed even though its current VM gate is verified.
+
+### IoT / Edge
+
+Verified engineering foundations include:
+
+- generic amd64 Edge rootfs/image pipeline;
+- generic arm64 Edge rootfs/image pipeline;
+- compressed `.img.xz` checksum/manifest validation;
+- compressed-size budget gate.
+
+Generic Edge images remain separate from concrete hardware support. Raspberry Pi, Jetson and industrial hardware families require validated Device Packs before they are listed as supported.
+
+### Container / Docker / OCI
+
+Verified in Foundation CI:
+
+- Docker image builds successfully for the CI amd64 path;
+- container starts `kingaid` successfully;
+- `kingai status --json` succeeds inside the running image;
+- Memory operation succeeds inside the container;
+- Task creation succeeds inside the container;
+- daemon runs as non-root `_kingai` by default;
+- no management TCP port is exposed by default.
+
+Implemented but not yet marked verified:
+
+- dedicated Buildx multi-architecture workflow for linux/amd64 + linux/arm64;
+- developer GHCR publish option;
+- OCI SBOM/provenance flags on developer publishing workflow.
+
+Until the dedicated multi-architecture workflow is actually run successfully, `container_multiarch_ci` remains `false`.
+
+## Current release-gate ledger
+
+| Gate | Current state |
+|---|---|
+| D5 Runtime CI | verified |
+| Container image CI (amd64 CI path) | verified |
+| Container multiarch CI/publish | **not yet verified** |
+| Installer VM | verified |
+| Desktop Live VM | verified |
+| Server BIOS/UEFI VM | verified |
+| A/B Update VM | verified |
+| Recovery VM | verified |
+| TUF Client | verified |
+| Secure Boot VM | verified |
+| Rollback drill | verified |
+| Recovery drill | verified |
+| Production TUF repository | **not ready** |
+| Production signing | **not ready** |
+| Protected branch governance | **not enabled** |
+| R2 release delivery | **not ready** |
+
+## Update, recovery and trust
+
+Current repository verification includes:
+
+- TUF client behavior;
+- pinned-root path protection;
+- permission self-healing limited to allowlisted trust files;
+- A/B update VM path;
+- health confirmation;
+- intentional boot-failure rollback drill;
+- recovery VM and recovery drill;
+- Microsoft-enrolled OVMF Secure Boot VM validation.
+
+These tests do **not** equal production signing readiness. Final production TUF repository operations, release-key ceremony/custody and production Secure Boot signing remain blocked.
+
+## Supply chain and compliance
+
+Implemented foundations include:
+
+- Apache-2.0 project license for KINGAI-authored repository code;
+- NOTICE and third-party policy;
+- package inventory embedded into OS builds;
+- deterministic SPDX 2.3 package SBOM generation;
+- checksum and manifest generation;
+- CodeQL workflow;
+- Docker/OCI developer build workflow with provenance/SBOM options;
+- staged release channels: `dev -> beta -> rc -> stable`;
+- fail-closed release gates.
+
+Unknown third-party license conclusions remain `NOASSERTION` instead of being guessed.
+
+## Still protected / incomplete
+
+The following are explicitly **not production-complete**:
+
+- constrained privileged Execution Broker (`kingai-execd`) and final sandbox profiles;
+- production AppArmor/seccomp/Landlock agent policy set;
+- final Planner / automatic task-step scheduler;
+- production OpenClaw / MCP / Codex / browser adapters;
+- full M0-M6 memory retrieval, promotion and evolution pipeline;
+- production model-provider adapters and model health service;
+- production TUF repository and threshold-key operations;
+- offline release-key custody and production Secure Boot signing;
+- branch-protection/release-governance gate;
+- production R2 release-delivery credentials and path;
+- verified multi-architecture container publication;
+- board-specific bootable Edge Device Packs;
+- final CVE automation and final legal review;
+- Stable support lifecycle commitment.
+
+RC and Stable remain blocked until their required security, update, signing, recovery, supply-chain, hardware and governance gates are verified.
 
 ---
 
-# KINGAI OS — 已验证项目状态
+# 中文状态摘要
 
-**状态日期：** 2026-08-12  
-**开发阶段：** D4 Developer Foundation / Pre-Alpha
+KINGAI OS 已从 D4 Developer Foundation 推进到 **D5 Alpha Runtime Foundation**。
 
-## 中文
+当前已真实通过 Foundation CI 的 D5 闭环基础：
 
-本文档严格区分 KINGAI OS **已经真实验证的能力** 与仍属于路线图或受保护发行门禁的能力。
+```text
+Unix Peer Identity
+ ↓
+Agent Registry
+ ↓
+Capability Policy
+ ↓
+Approval Broker
+ ↓
+Task Graph
+ ↓
+Memory / Model
+ ↓
+Audit
+```
 
-### 已发布
+已经验证：
 
-#### KINGAI OS Server Developer Preview
+- Approval 持久化、过期、批准、拒绝、一次性消费；
+- Agent + Capability + Target Hash + Peer UID 强绑定；
+- Approval 重复使用拒绝；
+- Task Graph 持久化、依赖校验、状态机、UID 隔离；
+- Memory 接入 `kingaid` 并实际读写；
+- Model Router 接入 `kingaid`，没有合适模型时安全失败；
+- CLI 集成；
+- Docker amd64 CI 镜像真实构建并启动；
+- Docker 内部 Memory / Task / Status 操作通过。
 
-- Release：`v0.1.0-dev-server-dev.2`
-- 镜像：`KINGAI-OS-Server-0.1.0-dev-amd64.iso`
-- 大小：`1,092,444,160 bytes`（约 1.02 GiB）
-- 发布位置：GitHub Pre-release，因为该文件低于 2 GiB 大文件分流阈值。
-- 发布资产：ISO、SHA-256 校验文件、机器可读 manifest。
-- 写盘安装：当前 Developer Foundation **未开放**。
-- 生产 Secure Boot 签名：**尚未启用**。
+四个平台正式统一为：
 
-该版本由 GitHub Actions 从仓库源码重新构建，并在正式上传前通过核心测试、RootFS 构建、ownership 检查、ISO 校验/manifest 检查以及 QEMU BIOS 真实启动验证。
+```text
+KINGAI OS Server
+KINGAI OS Desktop（个人电脑 / PC）
+KINGAI OS IoT / Edge
+KINGAI OS Container（Docker / OCI）
+```
 
-### 已验证工程基础
+Desktop 就是 PC 版本，不再创建第二套 PC Profile。
 
-#### 核心 / 安全
+Container 已有 amd64 CI 验证；linux/amd64 + linux/arm64 Buildx 工作流已经写入，但在专用多架构 workflow 真正成功运行前，不把它标成已验证。
 
-- `kingai`、`kingaid`、`kingai-update`、`kingai-installer` 可以成功构建。
-- Go 单元测试与 `go vet` 已成为 CI 门禁。
-- `kingaid` 使用本地 Unix Socket IPC，不对外开放 TCP 管理端口。
-- Capability Policy 对未知能力默认拒绝。
-- 高风险能力需要显式批准；Trust Root 修改仅允许 Owner。
-- 客户端 JSON 不能自行伪造 `Owner` 或 `Approved`。
-- 本机调用身份通过 Unix peer credentials 获得。
-- `main`、`system-ops`、`sec-ops` 通过 Agent Registry 和受信本机身份隔离。
-- Audit 保存策略决策，但不直接保存原始目标值。
-- 桌面可读 Public Status 已做去敏感化，不包含 Prompt、记忆正文、API Key、密码、Token 或 Secret。
+当前仍不能宣称生产完成的核心部分包括：Execution Broker、最终 Agent Sandbox、Planner、正式 Adapter、生产 TUF/签名、R2 正式发布链、硬件 Device Pack、Stable 生命周期等。
 
-#### Server
+因此当前正确定位是：
 
-- 基于 Ubuntu 26.04 的 KINGAI Server RootFS：已验证。
-- KINGAI `os-release` / MOTD / issue 品牌身份：已验证。
-- Linux Kernel / initramfs：已验证。
-- `kingaid` systemd 启用：已验证。
-- Hybrid Live ISO：已验证。
-- Casper filesystem/checksum 元数据：已验证。
-- QEMU BIOS 启动至 `KINGAI OS 0.1 Developer Foundation`：已验证。
-- 构建机 UID/GID 污染检查：已验证。
-
-#### Desktop
-
-- Ubuntu 26.04 Desktop RootFS：已验证。
-- Plasma 6 / KWin Wayland / SDDM / Qt 6 基础：已验证。
-- KINGAI Welcome 首次进入选择器：已加入。
-- KINGAI Intelligence / Flow / Classic Plasma 6 包 manifest：已验证。
-- 三套可切换桌面布局脚本：已加入。
-- KINGAI Agent Center 与本机去敏感状态：已加入并持续进行 CI 验证。
-- 完整 Desktop Live ISO 启动与体积验证：**进行中**。
-
-#### IoT / Edge
-
-- amd64 通用 KINGAI Edge RootFS / 镜像链：已验证。
-- arm64 通用 KINGAI Edge RootFS / 镜像链：已验证。
-- `.img.xz` SHA / manifest：已验证。
-- 压缩镜像硬体积门禁：已启用。
-- 通用 Edge 镜像明确标记 `bootable=false`、`device_pack_required=true`。
-- Raspberry Pi / Jetson / 工业设备等具体硬件 Device Pack：尚未正式发布。
-
-### 供应链 / 合规基础
-
-- KINGAI 自有仓库代码提供完整 Apache-2.0 文本。
-- 已加入 NOTICE 与第三方组件规则。
-- RootFS 自动嵌入实际安装包清单。
-- 当前构建链已加入确定性 SPDX 2.3 Package SBOM。
-- 后续 Live ISO 会同时在 ISO 内部和 Release 外部输出 SPDX SBOM。
-- 未机器确认的许可证结论使用 `NOASSERTION`，不会猜测授权。
-- Release Channel 按 `dev → beta → rc → stable` 受控推进。
-
-### 仍受保护 / 尚未完成的门禁
-
-当前明确**不宣称已经完成**：
-
-- 生产 Secure Boot 签名与离线 Release Key 托管；
-- 破坏性写盘安装执行；
-- 生产环境 A/B Slot 激活与自动回滚；
-- 完整 Recovery Environment 验证；
-- 最终 TUF Root / Threshold Key 操作；
-- 完整 CVE 自动化与最终全球法律审核；
-- GitHub Secrets 中的 R2 大文件发布凭据；
-- 具体硬件的 IoT / Edge Device Pack；
-- Stable 长期支持生命周期承诺。
-
-在这些门禁完成并验证前，RC 与 Stable 发布保持阻断。
+> **已经具备真实 OS 构建/安装/恢复/更新验证基础，并形成 Policy → Approval → Task → Memory/Model → Audit 运行闭环，同时覆盖 Server、Desktop、IoT/Edge、Docker/OCI 四种发行形态的 AI 原生操作系统 Pre-Alpha。**
