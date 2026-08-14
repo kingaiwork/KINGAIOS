@@ -1,8 +1,7 @@
 [Unit]
 Description=KINGAI OS Core Daemon
 Documentation=https://os.kingai.work/docs
-Requires=kingai-state-migrate.service
-After=local-fs.target kingai-state-migrate.service
+After=local-fs.target
 Before=multi-user.target
 Wants=kingai-health-scan.timer
 
