@@ -45,7 +45,7 @@ start_container() {
   docker run -d \
     --name "$name" \
     --read-only \
-    --security-opt no-new-privileges:true \
+    --security-opt no-new-privileges=true \
     --cap-drop ALL \
     --pids-limit 256 \
     --tmpfs /run/kingai:rw,nosuid,nodev,noexec,mode=0750,uid=10001,gid=10001 \
