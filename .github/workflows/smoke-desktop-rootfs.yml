@@ -85,7 +85,7 @@ jobs:
           assert data['X-Plasma-API-Minimum-Version']=='6.0'
           assert data['KPlugin']['Name']=='KINGAI Center'
           qml=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml').read_text()
-          for token in ('KINGAI Center','ActiveTasks','pendingApprovals','modelProviders','public-status.json'):
+          for token in ('KINGAI Center','activeTasks','pendingApprovals','modelProviders','public-status.json'):
               assert token in qml, token
           for forbidden in ('task goal','approval target','memory content body','api key'):
               assert forbidden not in qml.lower(), forbidden
