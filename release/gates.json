@@ -2,7 +2,7 @@
   "schema": 1,
   "d5_runtime_ci": true,
   "container_image_ci": true,
-  "container_multiarch_ci": false,
+  "container_multiarch_ci": true,
   "installer_vm": true,
   "desktop_live_vm": true,
   "server_bios_uefi_vm": true,
@@ -16,5 +16,5 @@
   "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. The KINGAI OS Container amd64 image build and runtime smoke are verified in Foundation CI. Multi-architecture Container publication remains false until the dedicated Buildx workflow is successfully exercised. Existing verified gates also include Server/Desktop boot foundations, installer, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill. Production TUF repository keys/signing material, branch governance, production multiarch container publishing, and Cloudflare delivery credentials are never inferred from source code."
+  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. The KINGAI OS Container amd64 image build/runtime smoke and dedicated linux/amd64 + linux/arm64 Buildx verification are successful. Developer GHCR publishing exists but production publication/signing is not inferred from build verification. Existing verified gates also include Server/Desktop boot foundations, installer, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
 }
