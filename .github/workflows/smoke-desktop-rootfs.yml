@@ -17,6 +17,21 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/smoke-desktop-rootfs.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'internal/desktop/**'
+      - 'internal/statuspub/**'
+      - 'cmd/kingaid/**'
+      - 'configs/**'
+      - 'systemd/**'
+      - 'sysusers/**'
+      - 'distro/packages/desktop.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/smoke-desktop-rootfs.yml'
   workflow_dispatch:
 
 permissions:
@@ -38,8 +53,9 @@ jobs:
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd
       - name: Build Ubuntu 26.04 based KINGAI Desktop RootFS
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
-      - name: Validate Desktop Core Agent Center and health intelligence
+      - name: Validate Desktop Core KINGAI Center and health intelligence
         run: |
+          set -euo pipefail
           root=dist/rootfs-desktop-amd64
           sudo chroot "$root" /usr/bin/kingai desktop list
           sudo chroot "$root" dpkg-query -W qdbus-qt6 plasma-desktop plasma-workspace kwin-wayland sddm
@@ -67,4 +83,12 @@ jobs:
           data=json.loads(p.read_text())
           assert data['KPackageStructure']=='Plasma/Applet'
           assert data['X-Plasma-API-Minimum-Version']=='6.0'
+          assert data['KPlugin']['Name']=='KINGAI Center'
+          qml=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml').read_text()
+          for token in ('KINGAI Center','activeTasks','pendingApprovals','modelProviders','public-status.json'):
+              assert token in qml, token
+          # Explanatory privacy labels are allowed. Test against concrete sample
+          # secrets/private payloads used by the statuspub regression suite.
+          for forbidden in ('must never be published','private task text','approval-target-secret','sk-test-secret','api_key='):
+              assert forbidden not in qml.lower(), forbidden
           PY
