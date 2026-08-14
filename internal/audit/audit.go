@@ -12,6 +12,7 @@ import (
 type Event struct {
 	Time             time.Time `json:"time"`
 	Type             string    `json:"type"`
+	ExecutionID      string    `json:"execution_id,omitempty"`
 	Agent            string    `json:"agent,omitempty"`
 	Capability       string    `json:"capability,omitempty"`
 	Allowed          bool      `json:"allowed,omitempty"`
@@ -19,6 +20,7 @@ type Event struct {
 	Risk             int       `json:"risk,omitempty"`
 	PeerUID          uint32    `json:"peer_uid,omitempty"`
 	TargetHash       string    `json:"target_hash,omitempty"`
+	DurationMS       int64     `json:"duration_ms,omitempty"`
 	Reason           string    `json:"reason,omitempty"`
 }
 
