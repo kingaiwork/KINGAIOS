@@ -11,11 +11,16 @@
   "recovery_vm": true,
   "tuf_client": true,
   "secure_boot_vm": true,
+  "iot_edge_runtime_ci": false,
+  "iot_device_pack_crypto_ci": false,
+  "iot_edge_ota_targeting_ci": false,
+  "iot_hardware_hil": false,
+  "iot_arm64_ab_update_hil": false,
   "tuf_repository": false,
   "production_signing_ready": false,
   "protected_branch": false,
   "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container amd64 runtime and linux/amd64 + linux/arm64 Buildx verification are successful. Server/Desktop boot foundations, direct installer VM, exact Server Live ISO -> embedded squashfs -> disposable GPT/EFI/A-B/LUKS disk -> installed UEFI boot, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill are verified. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
+  "notes": "Fail-closed. Existing verified gates retain their prior status. IoT / Edge now has a governed non-root Device Broker, trusted device identity, detached Ed25519 Device Pack verification, immutable artifact SHA-256 verification, physical risk floors, Edge Handler SDK, signed OTA target compatibility and explicit platform/HIL release metadata. The new IoT software gates remain false until this PR's current CI head passes. Real hardware HIL and ARM64 board-specific A/B flashing remain false until physical boot, capability, power-loss and rollback evidence exists. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
 }
