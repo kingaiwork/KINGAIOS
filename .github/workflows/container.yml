@@ -8,9 +8,13 @@ on:
       - .dockerignore
       - container/**
       - profiles/container.yaml
+      - release/gates.json
+      - .release/container-beta.json
       - scripts/build-container.sh
       - scripts/test-container.sh
+      - scripts/test-container-release-policy.sh
       - scripts/validate-oci-archive.py
+      - scripts/verify-container-release.sh
       - cmd/kingai/**
       - cmd/kingaid/**
       - internal/**
@@ -26,9 +30,13 @@ on:
       - .dockerignore
       - container/**
       - profiles/container.yaml
+      - release/gates.json
+      - .release/container-beta.json
       - scripts/build-container.sh
       - scripts/test-container.sh
+      - scripts/test-container-release-policy.sh
       - scripts/validate-oci-archive.py
+      - scripts/verify-container-release.sh
       - cmd/kingai/**
       - cmd/kingaid/**
       - internal/**
@@ -57,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Validate release policy
+        run: bash scripts/test-container-release-policy.sh
       - name: Build and smoke test hardened amd64 container
         run: bash scripts/test-container.sh
 
