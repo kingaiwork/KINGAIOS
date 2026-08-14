@@ -18,24 +18,25 @@ fi
 if [[ "$ARCH" == "arm64" ]];then MIRRORS=("deb http://ports.ubuntu.com/ubuntu-ports ${SUITE} main universe restricted multiverse" "deb http://ports.ubuntu.com/ubuntu-ports ${SUITE}-updates main universe restricted multiverse" "deb http://ports.ubuntu.com/ubuntu-ports ${SUITE}-security main universe restricted multiverse");else MIRRORS=("deb http://archive.ubuntu.com/ubuntu ${SUITE} main universe restricted multiverse" "deb http://archive.ubuntu.com/ubuntu ${SUITE}-updates main universe restricted multiverse" "deb http://security.ubuntu.com/ubuntu ${SUITE}-security main universe restricted multiverse");fi
 mmdebstrap --variant=minbase --architectures="$ARCH" --aptopt='APT::Install-Recommends "false"' --include="$PACKAGES" "$SUITE" "$ROOT" "${MIRRORS[@]}"
 chown 0:0 "$ROOT"
-for cmd in kingai kingaid kingai-update kingai-installer kingai-recovery;do
+for cmd in kingai kingaid kingai-execd kingai-update kingai-installer kingai-recovery;do
   case "$cmd" in
-    kingai)pkg=./cmd/kingai;; kingaid)pkg=./cmd/kingaid;; kingai-update)pkg=./cmd/kingai-update;; kingai-installer)pkg=./cmd/kingai-installer;; kingai-recovery)pkg=./cmd/kingai-recovery;;
+    kingai)pkg=./cmd/kingai;; kingaid)pkg=./cmd/kingaid;; kingai-execd)pkg=./cmd/kingai-execd;; kingai-update)pkg=./cmd/kingai-update;; kingai-installer)pkg=./cmd/kingai-installer;; kingai-recovery)pkg=./cmd/kingai-recovery;;
   esac
   CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -tags osusergo -ldflags "-s -w -X main.version=${VERSION}" -o "$OUT/$cmd-$ARCH" "$pkg"
 done
-install -Dm755 "$OUT/kingai-$ARCH" "$ROOT/usr/bin/kingai";install -Dm755 "$OUT/kingaid-$ARCH" "$ROOT/usr/lib/kingai/kingaid";install -Dm755 "$OUT/kingai-update-$ARCH" "$ROOT/usr/lib/kingai/kingai-update";install -Dm755 "$OUT/kingai-installer-$ARCH" "$ROOT/usr/lib/kingai/kingai-installer";install -Dm755 "$OUT/kingai-recovery-$ARCH" "$ROOT/usr/lib/kingai/kingai-recovery"
+install -Dm755 "$OUT/kingai-$ARCH" "$ROOT/usr/bin/kingai";install -Dm755 "$OUT/kingaid-$ARCH" "$ROOT/usr/lib/kingai/kingaid";install -Dm755 "$OUT/kingai-execd-$ARCH" "$ROOT/usr/lib/kingai/kingai-execd";install -Dm755 "$OUT/kingai-update-$ARCH" "$ROOT/usr/lib/kingai/kingai-update";install -Dm755 "$OUT/kingai-installer-$ARCH" "$ROOT/usr/lib/kingai/kingai-installer";install -Dm755 "$OUT/kingai-recovery-$ARCH" "$ROOT/usr/lib/kingai/kingai-recovery"
 ln -sfn /usr/lib/kingai/kingai-update "$ROOT/usr/bin/kingai-update";ln -sfn /usr/lib/kingai/kingai-installer "$ROOT/usr/bin/kingai-installer";ln -sfn /usr/lib/kingai/kingai-recovery "$ROOT/usr/bin/kingai-recovery"
-install -Dm644 systemd/kingaid.service "$ROOT/usr/lib/systemd/system/kingaid.service";install -Dm644 systemd/kingai-update-health.service "$ROOT/usr/lib/systemd/system/kingai-update-health.service"
+install -Dm644 systemd/kingaid.service "$ROOT/usr/lib/systemd/system/kingaid.service";install -Dm644 systemd/kingai-execd.service "$ROOT/usr/lib/systemd/system/kingai-execd.service";install -Dm644 systemd/kingai-update-health.service "$ROOT/usr/lib/systemd/system/kingai-update-health.service"
 install -Dm644 sysusers/kingai.conf "$ROOT/usr/lib/sysusers.d/kingai.conf";install -Dm644 configs/policy.json "$ROOT/etc/kingai/policy.json";install -Dm644 configs/system.json "$ROOT/etc/kingai/system.json";install -Dm644 configs/models.json "$ROOT/etc/kingai/models.json";install -Dm644 configs/agents.json "$ROOT/etc/kingai/agents.json"
 cp -a --no-preserve=ownership distro/overlay/. "$ROOT/"
 rm -f "$ROOT/etc/os-release" "$ROOT/usr/lib/os-release";install -Dm644 distro/overlay/etc/os-release "$ROOT/usr/lib/os-release";ln -s ../usr/lib/os-release "$ROOT/etc/os-release";mkdir -p "$ROOT/etc/systemd/system/multi-user.target.wants"
 if [[ "$PROFILE" == "server" || "$PROFILE" == "desktop" ]]; then
+  ln -sfn /usr/lib/systemd/system/kingai-execd.service "$ROOT/etc/systemd/system/multi-user.target.wants/kingai-execd.service"
   ln -sfn /usr/lib/systemd/system/kingaid.service "$ROOT/etc/systemd/system/multi-user.target.wants/kingaid.service"
   ln -sfn /usr/lib/systemd/system/kingai-update-health.service "$ROOT/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
 fi
 if [[ "$PROFILE" == "recovery" ]]; then
-  rm -f "$ROOT/etc/systemd/system/multi-user.target.wants/kingaid.service" "$ROOT/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
+  rm -f "$ROOT/etc/systemd/system/multi-user.target.wants/kingai-execd.service" "$ROOT/etc/systemd/system/multi-user.target.wants/kingaid.service" "$ROOT/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
   printf 'KINGAI OS Recovery %s\nOffline A/B inspection, rollback and boot repair. No network trust is implied.\n' "$VERSION" > "$ROOT/etc/motd"
 fi
 install -d -m0755 "$ROOT/var/crash" "$ROOT/etc/xdg/autostart"
@@ -54,7 +55,7 @@ if [[ "$PROFILE" == "desktop" ]]; then chown -R 0:0 "$ROOT/usr/share/plasma/plas
 chown 0:0 "$ROOT/usr/lib/os-release" "$ROOT/etc/motd" "$ROOT/etc/issue" "$ROOT/etc/issue.net" "$ROOT" 2>/dev/null || true
 if [[ "$PROFILE" != "iot" ]];then test -n "$(find "$ROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -print -quit)"||{ echo "kernel missing from rootfs" >&2;exit 1;};test -n "$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -print -quit)"||{ echo "initramfs missing from rootfs" >&2;exit 1;};fi
 if [[ "$ARCH" == "amd64" && ( "$PROFILE" == "server" || "$PROFILE" == "desktop" ) ]]; then
-  for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-editenv findmnt blkid; do chroot "$ROOT" sh -c "command -v $tool >/dev/null" || { echo "installer/update runtime missing: $tool" >&2; exit 1; }; done
+  for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-editenv findmnt blkid systemctl; do chroot "$ROOT" sh -c "command -v $tool >/dev/null" || { echo "installer/update/runtime missing: $tool" >&2; exit 1; }; done
 fi
 if [[ "$PROFILE" == "recovery" ]]; then for tool in cryptsetup mount umount grub-editenv blkid sync; do chroot "$ROOT" sh -c "command -v $tool >/dev/null" || { echo "recovery runtime missing: $tool" >&2; exit 1; }; done; fi
 if [[ "${KINGAI_SKIP_ARCHIVE:-0}" == "1" ]];then echo "Built rootfs directory: $ROOT";exit 0;fi
