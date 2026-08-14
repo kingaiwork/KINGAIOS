@@ -10,6 +10,7 @@ on:
       - 'systemd/kingaid.service'
       - 'systemd/kingaid-iot.conf'
       - 'systemd/kingaid-execd.conf'
+      - 'tmpfiles/**'
       - 'distro/packages/iot.txt'
       - 'distro/overlay/**'
       - 'scripts/build-rootfs.sh'
@@ -27,6 +28,7 @@ on:
       - 'systemd/kingaid.service'
       - 'systemd/kingaid-iot.conf'
       - 'systemd/kingaid-execd.conf'
+      - 'tmpfiles/**'
       - 'distro/packages/iot.txt'
       - 'distro/overlay/**'
       - 'scripts/build-rootfs.sh'
@@ -55,6 +57,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Test governed device runtime
+        run: go test ./internal/devicepack ./internal/policy ./internal/agent ./cmd/kingaid
       - name: Install cross-architecture and filesystem tooling
         run: |
           sudo apt-get update
@@ -76,10 +80,21 @@ jobs:
           sudo test -L "$root/etc/systemd/system/multi-user.target.wants/kingaid.service"
           sudo test -L "$root/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
           sudo test -f "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          sudo test -d "$root/etc/kingai/device-packs"
+          sudo test -f "$root/usr/share/kingai/iot/device-pack.schema.json"
+          sudo test -f "$root/usr/share/doc/kingai-os/IOT-HANDLER-PROTOCOL.md"
+          sudo test -f "$root/usr/lib/tmpfiles.d/kingai-iot.conf"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$root/usr/lib/systemd/system/kingaid.service"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=16$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_RUNTIME_ENABLED=true$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_PACK_DIR=/etc/kingai/device-packs$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_HANDLER_ROOT=/run/kingai-device$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_BROKER_SOCKET=/run/kingai/device-broker.sock$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_EXECD_SOCKET=/run/kingai/device-broker.sock$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^NAME="KINGAI OS"' "$root/usr/lib/os-release"
+          test "$(sudo stat -c '%u:%g' "$root/etc/kingai/device-packs")" = '0:0'
+          test "$(sudo stat -c '%a' "$root/etc/kingai/device-packs")" = '755'
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
       - name: Build generic Edge filesystem image
         run: sudo bash scripts/build-iot-image.sh "${{ matrix.arch }}" dist
