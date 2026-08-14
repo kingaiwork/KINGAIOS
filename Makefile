@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 VERSION := $(shell tr -d '[:space:]' < VERSION)
 DIST := dist
 
-.PHONY: all build test vet check container clean version
+.PHONY: all build test vet check container container-multiarch container-test clean version
 
 all: check build
 
@@ -31,10 +31,19 @@ check: vet test
 	@test -f profiles/iot.yaml
 	@test -f profiles/container.yaml
 	@test -f container/Dockerfile
+	@test -f container/compose.yaml
+	@test -f container/kubernetes.yaml
+	@test -f scripts/test-container.sh
 	@test -f systemd/kingai-execd.service
 
 container:
 	KINGAI_CONTAINER_PLATFORMS=linux/amd64 bash scripts/build-container.sh
+
+container-multiarch:
+	bash scripts/build-container.sh
+
+container-test:
+	bash scripts/test-container.sh
 
 clean:
 	rm -rf $(DIST) out build
