@@ -42,6 +42,8 @@ if [[ "$profile" == desktop ]]; then
 else
   require_fresh installer 'smoke-installer-vm.yml' \
     '^(cmd/kingai-installer/|internal/installer/|internal/update/|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|scripts/build-rootfs\.sh$|systemd/kingai-update-health\.service$|go\.(mod|sum)$)'
+  require_fresh installable-live-iso 'smoke-installable-live-iso.yml' \
+    '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs|build-live-iso)\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$)'
 fi
 
 require_fresh ab-update 'smoke-update-ab-vm.yml' \
