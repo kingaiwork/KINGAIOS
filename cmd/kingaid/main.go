@@ -415,13 +415,14 @@ func countHealthyProviders(statuses []model.ProviderStatus) int { count := 0; fo
 func countHealthyAdapters(statuses []runtimeadapter.Status) int { count := 0; for _, status := range statuses { if status.State == runtimeadapter.LifecycleHealthy && status.Health.OK { count++ } }; return count }
 func componentStatus(snapshot runtimehealth.Snapshot, name string) string { for _, component := range snapshot.Components { if component.Name == name { return component.Status } }; return "unknown" }
 func probeWritableDirs(paths ...string) (bool, string) {
+	const posixWriteOK = 2
 	for _, path := range paths {
 		if strings.TrimSpace(path) == "" { return false, "empty state path" }
 		if err := os.MkdirAll(path, 0o700); err != nil { return false, err.Error() }
 		info, err := os.Stat(path)
 		if err != nil { return false, err.Error() }
 		if !info.IsDir() { return false, "state path is not a directory: " + path }
-		if err := syscall.Access(path, syscall.W_OK); err != nil { return false, err.Error() }
+		if err := syscall.Access(path, posixWriteOK); err != nil { return false, err.Error() }
 	}
 	return true, ""
 }
