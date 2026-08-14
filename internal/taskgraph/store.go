@@ -29,12 +29,17 @@ const (
 )
 
 type Step struct {
-	ID         string   `json:"id"`
-	Title      string   `json:"title"`
-	Capability string   `json:"capability,omitempty"`
-	DependsOn  []string `json:"depends_on,omitempty"`
-	ApprovalID string   `json:"approval_id,omitempty"`
-	Status     Status   `json:"status"`
+	ID         string          `json:"id"`
+	Title      string          `json:"title"`
+	Capability string          `json:"capability,omitempty"`
+	Target     string          `json:"target,omitempty"`
+	DependsOn  []string        `json:"depends_on,omitempty"`
+	ApprovalID string          `json:"approval_id,omitempty"`
+	Status     Status          `json:"status"`
+	Result     json.RawMessage `json:"result,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	StartedAt  *time.Time      `json:"started_at,omitempty"`
+	FinishedAt *time.Time      `json:"finished_at,omitempty"`
 }
 
 type Task struct {
@@ -65,8 +70,12 @@ func (s Store) Create(goal, agent string, peerUID uint32, steps []Step) (Task, e
 	seen := map[string]struct{}{}
 	for i := range steps {
 		steps[i].ID = strings.TrimSpace(steps[i].ID)
+		steps[i].Title = strings.TrimSpace(steps[i].Title)
 		if steps[i].ID == "" {
 			steps[i].ID = fmt.Sprintf("step-%d", i+1)
+		}
+		if steps[i].Title == "" {
+			steps[i].Title = steps[i].ID
 		}
 		if _, ok := seen[steps[i].ID]; ok {
 			return Task{}, fmt.Errorf("duplicate step id: %s", steps[i].ID)
@@ -75,13 +84,22 @@ func (s Store) Create(goal, agent string, peerUID uint32, steps []Step) (Task, e
 		if steps[i].Status == "" {
 			steps[i].Status = StatusCreated
 		}
+		if !validStatus(steps[i].Status) {
+			return Task{}, fmt.Errorf("invalid initial step status: %s", steps[i].Status)
+		}
 	}
 	for _, step := range steps {
 		for _, dep := range step.DependsOn {
+			if dep == step.ID {
+				return Task{}, fmt.Errorf("step %s cannot depend on itself", step.ID)
+			}
 			if _, ok := seen[dep]; !ok {
 				return Task{}, fmt.Errorf("step %s depends on unknown step %s", step.ID, dep)
 			}
 		}
+	}
+	if hasDependencyCycle(steps) {
+		return Task{}, errors.New("task step dependency cycle detected")
 	}
 	now := time.Now().UTC()
 	t := Task{ID: id, Goal: goal, Agent: agent, PeerUID: peerUID, Status: StatusCreated, Steps: steps, CreatedAt: now, UpdatedAt: now}
@@ -144,10 +162,10 @@ func (s Store) TransitionForPeer(id string, peerUID uint32, next Status, result 
 	if err != nil {
 		return Task{}, err
 	}
-	if peerUID != 0 && t.PeerUID != peerUID {
-		return Task{}, errors.New("task owner mismatch")
+	if err := authorizePeer(t, peerUID); err != nil {
+		return Task{}, err
 	}
-	if !canTransition(t.Status, next) {
+	if !validStatus(next) || !canTransition(t.Status, next) {
 		return Task{}, fmt.Errorf("invalid task transition: %s -> %s", t.Status, next)
 	}
 	t.Status = next
@@ -170,13 +188,16 @@ func (s Store) SetStepApprovalForPeer(id string, peerUID uint32, stepID, approva
 	if err != nil {
 		return Task{}, err
 	}
-	if peerUID != 0 && t.PeerUID != peerUID {
-		return Task{}, errors.New("task owner mismatch")
+	if err := authorizePeer(t, peerUID); err != nil {
+		return Task{}, err
 	}
 	found := false
 	for i := range t.Steps {
 		if t.Steps[i].ID == stepID {
-			t.Steps[i].ApprovalID = approvalID
+			if terminal(t.Steps[i].Status) {
+				return Task{}, errors.New("cannot attach approval to terminal step")
+			}
+			t.Steps[i].ApprovalID = strings.TrimSpace(approvalID)
 			t.Steps[i].Status = StatusWaitingApproval
 			found = true
 			break
@@ -193,18 +214,193 @@ func (s Store) SetStepApprovalForPeer(id string, peerUID uint32, stepID, approva
 	return t, nil
 }
 
+func (s Store) TransitionStepForPeer(id string, peerUID uint32, stepID string, next Status, result json.RawMessage, failure string) (Task, error) {
+	t, err := s.Get(id)
+	if err != nil {
+		return Task{}, err
+	}
+	if err := authorizePeer(t, peerUID); err != nil {
+		return Task{}, err
+	}
+	if terminal(t.Status) {
+		return Task{}, errors.New("cannot transition a step in a terminal task")
+	}
+	idx := -1
+	for i := range t.Steps {
+		if t.Steps[i].ID == stepID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return Task{}, errors.New("task step not found")
+	}
+	step := &t.Steps[idx]
+	if !validStatus(next) || !canTransition(step.Status, next) {
+		return Task{}, fmt.Errorf("invalid step transition: %s -> %s", step.Status, next)
+	}
+	if next == StatusRunning && !dependenciesCompleted(t, *step) {
+		return Task{}, errors.New("step dependencies are not completed")
+	}
+
+	now := time.Now().UTC()
+	step.Status = next
+	if next == StatusRunning && step.StartedAt == nil {
+		step.StartedAt = &now
+	}
+	if next == StatusCompleted {
+		step.Result = result
+		step.Error = ""
+		step.FinishedAt = &now
+	}
+	if next == StatusFailed || next == StatusBlocked {
+		step.Error = strings.TrimSpace(failure)
+		if next == StatusFailed {
+			step.FinishedAt = &now
+		}
+	}
+	if next == StatusCancelled {
+		step.FinishedAt = &now
+	}
+
+	t.UpdatedAt = now
+	reconcileTaskStatus(&t)
+	if err := s.write(t); err != nil {
+		return Task{}, err
+	}
+	return t, nil
+}
+
+func ReadySteps(t Task) []Step {
+	if terminal(t.Status) {
+		return []Step{}
+	}
+	out := make([]Step, 0)
+	for _, step := range t.Steps {
+		if (step.Status == StatusCreated || step.Status == StatusWaiting) && dependenciesCompleted(t, step) {
+			out = append(out, step)
+		}
+	}
+	return out
+}
+
+func authorizePeer(t Task, peerUID uint32) error {
+	if peerUID != 0 && t.PeerUID != peerUID {
+		return errors.New("task owner mismatch")
+	}
+	return nil
+}
+
+func dependenciesCompleted(t Task, step Step) bool {
+	if len(step.DependsOn) == 0 {
+		return true
+	}
+	status := make(map[string]Status, len(t.Steps))
+	for _, candidate := range t.Steps {
+		status[candidate.ID] = candidate.Status
+	}
+	for _, dep := range step.DependsOn {
+		if status[dep] != StatusCompleted {
+			return false
+		}
+	}
+	return true
+}
+
+func reconcileTaskStatus(t *Task) {
+	if len(t.Steps) == 0 {
+		return
+	}
+	allComplete := true
+	for _, step := range t.Steps {
+		switch step.Status {
+		case StatusFailed:
+			t.Status = StatusFailed
+			t.Error = step.Error
+			return
+		case StatusBlocked:
+			t.Status = StatusBlocked
+			t.Error = step.Error
+			return
+		case StatusWaitingApproval:
+			allComplete = false
+			t.Status = StatusWaitingApproval
+		case StatusRunning:
+			allComplete = false
+			t.Status = StatusRunning
+		case StatusCreated, StatusPlanning, StatusWaiting, StatusPaused:
+			allComplete = false
+			if t.Status != StatusWaitingApproval && t.Status != StatusRunning {
+				t.Status = StatusWaiting
+			}
+		case StatusCancelled:
+			allComplete = false
+		}
+	}
+	if allComplete {
+		t.Status = StatusCompleted
+		t.Error = ""
+	}
+}
+
+func hasDependencyCycle(steps []Step) bool {
+	deps := make(map[string][]string, len(steps))
+	for _, step := range steps {
+		deps[step.ID] = append([]string(nil), step.DependsOn...)
+	}
+	visiting := map[string]bool{}
+	visited := map[string]bool{}
+	var visit func(string) bool
+	visit = func(id string) bool {
+		if visiting[id] {
+			return true
+		}
+		if visited[id] {
+			return false
+		}
+		visiting[id] = true
+		for _, dep := range deps[id] {
+			if visit(dep) {
+				return true
+			}
+		}
+		visiting[id] = false
+		visited[id] = true
+		return false
+	}
+	for id := range deps {
+		if visit(id) {
+			return true
+		}
+	}
+	return false
+}
+
+func terminal(status Status) bool {
+	return status == StatusCompleted || status == StatusFailed || status == StatusCancelled
+}
+
+func validStatus(status Status) bool {
+	switch status {
+	case StatusCreated, StatusPlanning, StatusWaiting, StatusWaitingApproval, StatusRunning, StatusPaused, StatusBlocked, StatusFailed, StatusCompleted, StatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 func canTransition(from, to Status) bool {
 	if from == to {
 		return true
 	}
 	allowed := map[Status]map[Status]bool{
-		StatusCreated:         {StatusPlanning: true, StatusCancelled: true},
+		StatusCreated:         {StatusPlanning: true, StatusWaiting: true, StatusWaitingApproval: true, StatusRunning: true, StatusCancelled: true},
 		StatusPlanning:        {StatusWaiting: true, StatusWaitingApproval: true, StatusRunning: true, StatusBlocked: true, StatusFailed: true, StatusCancelled: true},
-		StatusWaiting:         {StatusPlanning: true, StatusRunning: true, StatusBlocked: true, StatusCancelled: true},
+		StatusWaiting:         {StatusPlanning: true, StatusWaitingApproval: true, StatusRunning: true, StatusBlocked: true, StatusCancelled: true},
 		StatusWaitingApproval: {StatusRunning: true, StatusBlocked: true, StatusCancelled: true},
 		StatusRunning:         {StatusPaused: true, StatusWaiting: true, StatusWaitingApproval: true, StatusBlocked: true, StatusFailed: true, StatusCompleted: true, StatusCancelled: true},
 		StatusPaused:          {StatusRunning: true, StatusCancelled: true},
-		StatusBlocked:         {StatusPlanning: true, StatusRunning: true, StatusFailed: true, StatusCancelled: true},
+		StatusBlocked:         {StatusPlanning: true, StatusWaiting: true, StatusRunning: true, StatusFailed: true, StatusCancelled: true},
 	}
 	return allowed[from][to]
 }
