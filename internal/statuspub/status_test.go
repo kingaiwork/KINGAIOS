@@ -19,8 +19,14 @@ func TestPublicStatusIsSanitizedAndReadable(t *testing.T) {
 	now := time.Now().UTC()
 	mustWriteJSON(t, filepath.Join(approvals, "one.json"), map[string]any{"status":"pending","expires_at":now.Add(time.Minute)})
 	mustWriteJSON(t, filepath.Join(approvals, "two.json"), map[string]any{"status":"pending","expires_at":now.Add(-time.Minute)})
-	mustWriteJSON(t, filepath.Join(tasks, "one.json"), map[string]any{"status":"running","goal":"must never be published"})
-	mustWriteJSON(t, filepath.Join(tasks, "two.json"), map[string]any{"status":"completed","goal":"private task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "running.json"), map[string]any{"status":"running","goal":"must never be published"})
+	mustWriteJSON(t, filepath.Join(tasks, "waiting.json"), map[string]any{"status":"waiting","goal":"private waiting task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "approval.json"), map[string]any{"status":"waiting_approval","target":"approval-target-secret"})
+	mustWriteJSON(t, filepath.Join(tasks, "blocked.json"), map[string]any{"status":"blocked","goal":"private blocked task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "paused.json"), map[string]any{"status":"paused","goal":"private paused task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "planning.json"), map[string]any{"status":"planning","goal":"private planning task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "completed.json"), map[string]any{"status":"completed","goal":"private completed task text"})
+	mustWriteJSON(t, filepath.Join(tasks, "failed.json"), map[string]any{"status":"failed","error":"private failure text"})
 	mustWriteJSON(t, models, map[string]any{"providers":[]map[string]any{{"provider":"local"},{"provider":"local"},{"provider":"cloud"}}})
 	t.Setenv("KINGAI_APPROVAL_ROOT", approvals)
 	t.Setenv("KINGAI_TASK_ROOT", tasks)
@@ -33,9 +39,12 @@ func TestPublicStatusIsSanitizedAndReadable(t *testing.T) {
 	var got Snapshot
 	if err := json.Unmarshal(b, &got); err != nil { t.Fatal(err) }
 	if got.Product != "KINGAI OS" || got.RegisteredAgents != 3 { t.Fatalf("unexpected status: %#v", got) }
-	if got.ActiveTasks != 1 || got.PendingApprovals != 1 || got.ModelProviders != 2 { t.Fatalf("unexpected activity counts: %#v", got) }
+	if got.ActiveTasks != 6 || got.PendingApprovals != 1 || got.ModelProviders != 2 { t.Fatalf("unexpected activity counts: %#v", got) }
+	if got.RunningTasks != 1 || got.WaitingTasks != 1 || got.WaitingApprovalTasks != 1 || got.BlockedTasks != 1 || got.PausedTasks != 1 || got.PlanningTasks != 1 {
+		t.Fatalf("unexpected task state counts: %#v", got)
+	}
 	text := strings.ToLower(string(b))
-	for _, forbidden := range []string{"prompt", "token", "secret", "memory_content", "api_key", "password", "must never be published", "private task text"} {
+	for _, forbidden := range []string{"prompt", "token", "secret", "memory_content", "api_key", "password", "must never be published", "private waiting task text", "private blocked task text", "private paused task text", "private planning task text", "private completed task text", "private failure text"} {
 		if strings.Contains(text, forbidden) { t.Fatalf("public status contains forbidden content %q", forbidden) }
 	}
 	st, err := os.Stat(p); if err != nil { t.Fatal(err) }
