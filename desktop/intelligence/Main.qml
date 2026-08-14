@@ -36,16 +36,18 @@ ApplicationWindow {
     readonly property var centers: [
         { id: "home", label: "Home", glyph: "⌂", title: "Intelligence Home", note: "Your governed local AI workspace.", detail: "See runtime health, active work and the system surfaces that need your attention." },
         { id: "agents", label: "Agents", glyph: "A", title: "Agent Center", note: "Identity before authority.", detail: "KINGAI agents operate through named identities and capability policy. Privileged roles remain separated from ordinary agents." },
-        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts plus a private per-user task list without exposing other users or raw execution details." },
-        { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. The overview exposes only pending counts; decisions remain behind the governed runtime path." },
-        { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "Memory is owned, sensitivity-aware and governed. Content is never exposed through the public desktop status channel." },
-        { id: "models", label: "Models", glyph: "◈", title: "Model Center", note: "One fabric across local and remote providers.", detail: "Model status reflects configured provider count and routing mode while private credentials remain outside the desktop overview." },
-        { id: "automations", label: "Automations", glyph: "↻", title: "Automation Center", note: "Repeatable intelligence with visible control.", detail: "Automation work shares the same Task, Policy, Approval and Audit contracts. Current overview uses task lifecycle state as its safe activity signal." },
+        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts plus your private per-user task list without exposing another user's work or raw execution details." },
+        { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. This overview exposes counts only; decisions remain behind the governed authorization path." },
+        { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "See your M0–M6 metadata counts without publishing Memory Data. Content remains inside the owner-scoped Memory service." },
+        { id: "models", label: "Models", glyph: "◈", title: "Model Center", note: "One fabric across local and remote providers.", detail: "Model status reflects provider count and routing mode while credentials and provider-private data remain outside the desktop overview." },
+        { id: "automations", label: "Automations", glyph: "↻", title: "Automation Center", note: "Repeatable intelligence with visible control.", detail: "Automation work shares the same Task, Policy, Approval and Audit contracts. Task lifecycle state is the current safe activity signal." },
         { id: "health", label: "System Health", glyph: "+", title: "System Health", note: "Understand before repairing.", detail: "Health shows sanitized runtime, policy and dependency posture. Repair and privileged actions remain governed separately." }
     ]
 
     function centerById(id) {
-        for (var i = 0; i < centers.length; ++i) if (centers[i].id === id) return centers[i]
+        for (var i = 0; i < centers.length; ++i) {
+            if (centers[i].id === id) return centers[i]
+        }
         return centers[0]
     }
 
@@ -55,7 +57,9 @@ ApplicationWindow {
             v = v.substring(9)
             if (v.indexOf("/") >= 0) v = v.split("/")[0]
         }
-        for (var i = 0; i < centers.length; ++i) if (centers[i].id === v) return v
+        for (var i = 0; i < centers.length; ++i) {
+            if (centers[i].id === v) return v
+        }
         return "home"
     }
 
@@ -92,7 +96,7 @@ ApplicationWindow {
         case "memory":
             return [
                 { label: "Mode", value: memoryMode, note: "local memory posture" },
-                { label: "Content", value: "Private", note: "not published here" },
+                { label: "Content", value: "Private", note: "not in public status" },
                 { label: "Cloud required", value: cloudRequired ? "Yes" : "No", note: cloudRequired ? "dependency present" : "local-first" },
                 { label: "Runtime", value: runtimeHealth === "ok" ? "Healthy" : "Offline", note: version }
             ]
@@ -136,18 +140,54 @@ ApplicationWindow {
 
     function stateSummary() {
         if (selectedCenter === "tasks" || selectedCenter === "automations") {
-            return "Running " + runningTasks + "  ·  Planning " + planningTasks + "  ·  Waiting " + waitingTasks + "  ·  Approval " + waitingApprovalTasks + "  ·  Paused " + pausedTasks + "  ·  Blocked " + blockedTasks
+            return "Running " + runningTasks + " · Planning " + planningTasks + " · Waiting " + waitingTasks + " · Approval " + waitingApprovalTasks + " · Paused " + pausedTasks + " · Blocked " + blockedTasks
         }
         if (selectedCenter === "models") {
-            return modelProviders > 0 ? (modelProviders + " provider(s) · " + modelMode + " · " + modelStrategy) : "No model providers configured yet. The governed OS core remains available without publishing provider credentials."
+            return modelProviders > 0 ? (modelProviders + " provider(s) · " + modelMode + " · " + modelStrategy) : "No model providers configured."
         }
         if (selectedCenter === "approvals") {
-            return pendingApprovals > 0 ? (pendingApprovals + " approval request(s) are pending. Open a governed approval client to inspect scope and decide.") : "No pending approval requests in the sanitized status snapshot."
+            return pendingApprovals > 0 ? (pendingApprovals + " approval request(s) pending") : "No pending approval requests"
         }
         if (selectedCenter === "health") {
             return "Runtime " + runtimeHealth + " · Policy " + policyMode + " · Cloud required " + (cloudRequired ? "yes" : "no")
         }
         return "Memory " + memoryMode + " · Models " + modelMode + " · Policy " + policyMode
+    }
+
+    function refreshStatus() {
+        var xhr = new XMLHttpRequest()
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE) return
+            if (xhr.status !== 0 && xhr.status !== 200) {
+                root.runtimeHealth = "offline"
+                return
+            }
+            try {
+                var s = JSON.parse(xhr.responseText)
+                root.runtimeHealth = s.health || "offline"
+                root.version = s.version || "—"
+                root.policyMode = s.policy || "—"
+                root.registeredAgents = s.registered_agents || 0
+                root.activeTasks = s.active_tasks || 0
+                root.runningTasks = s.running_tasks || 0
+                root.waitingTasks = s.waiting_tasks || 0
+                root.waitingApprovalTasks = s.waiting_approval_tasks || 0
+                root.blockedTasks = s.blocked_tasks || 0
+                root.pausedTasks = s.paused_tasks || 0
+                root.planningTasks = s.planning_tasks || 0
+                root.pendingApprovals = s.pending_approvals || 0
+                root.modelProviders = s.model_providers || 0
+                root.modelMode = s.model_mode || "—"
+                root.modelStrategy = s.model_strategy || "—"
+                root.memoryMode = s.memory_mode || "—"
+                root.cloudRequired = s.cloud_required === true
+                root.updatedAt = s.updated_at || "—"
+            } catch (e) {
+                root.runtimeHealth = "offline"
+            }
+        }
+        xhr.open("GET", "file:///run/kingai/public-status.json")
+        xhr.send()
     }
 
     Component.onCompleted: parseArguments()
@@ -190,11 +230,11 @@ ApplicationWindow {
 
                     Item { Layout.fillHeight: true }
                     Label {
-                        text: runtimeHealth === "ok" ? "● Runtime online" : "● Runtime unavailable"
-                        color: runtimeHealth === "ok" ? "#72d58a" : "#e58a85"
+                        text: root.runtimeHealth === "ok" ? "● Runtime online" : "● Runtime unavailable"
+                        color: root.runtimeHealth === "ok" ? "#72d58a" : "#e58a85"
                         font.pixelSize: 11
                     }
-                    Label { text: version; color: "#6f7885"; font.pixelSize: 10 }
+                    Label { text: root.version; color: "#6f7885"; font.pixelSize: 10 }
                 }
             }
 
@@ -224,11 +264,11 @@ ApplicationWindow {
                             implicitWidth: 112
                             implicitHeight: 34
                             radius: 17
-                            color: runtimeHealth === "ok" ? "#17351f" : "#3a1f20"
+                            color: root.runtimeHealth === "ok" ? "#17351f" : "#3a1f20"
                             Label {
                                 anchors.centerIn: parent
-                                text: runtimeHealth === "ok" ? "●  ONLINE" : "●  OFFLINE"
-                                color: runtimeHealth === "ok" ? "#9ee7ad" : "#f0aaa6"
+                                text: root.runtimeHealth === "ok" ? "●  ONLINE" : "●  OFFLINE"
+                                color: root.runtimeHealth === "ok" ? "#9ee7ad" : "#f0aaa6"
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -255,21 +295,11 @@ ApplicationWindow {
 
                         Repeater {
                             model: root.metricsForCenter(root.selectedCenter)
-                            delegate: Rectangle {
+                            delegate: MetricCard {
                                 required property var modelData
-                                Layout.fillWidth: true
-                                implicitHeight: 112
-                                radius: 15
-                                color: "#181c22"
-                                border.color: "#272d36"
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 15
-                                    Label { text: modelData.label; color: "#8994a2"; font.pixelSize: 11 }
-                                    Item { Layout.fillHeight: true }
-                                    Label { text: modelData.value; color: "white"; font.pixelSize: modelData.value.length > 12 ? 16 : 25; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    Label { text: modelData.note; color: "#747e8a"; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
-                                }
+                                label: modelData.label
+                                value: modelData.value
+                                note: modelData.note
                             }
                         }
                     }
@@ -282,11 +312,19 @@ ApplicationWindow {
                         Layout.preferredHeight: visible ? implicitHeight : 0
                     }
 
+                    MemoryCenter {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 34
+                        Layout.rightMargin: 34
+                        visible: root.selectedCenter === "memory"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 34
                         Layout.rightMargin: 34
-                        implicitHeight: 250
+                        implicitHeight: 230
                         radius: 18
                         color: "#161a20"
                         border.color: "#272d36"
@@ -302,7 +340,6 @@ ApplicationWindow {
                                 font.pixelSize: 19
                                 font.bold: true
                             }
-
                             Label {
                                 Layout.fillWidth: true
                                 text: root.selectedCenter === "home"
@@ -312,7 +349,6 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 13
                             }
-
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 62
@@ -324,19 +360,18 @@ ApplicationWindow {
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         Label { text: "Safe status summary"; color: "#7f8995"; font.pixelSize: 10 }
-                                        Label { text: root.stateSummary(); color: "white"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                        Label { Layout.fillWidth: true; text: root.stateSummary(); color: "white"; font.pixelSize: 12; elide: Text.ElideRight }
                                     }
                                     ColumnLayout {
                                         Layout.preferredWidth: 230
-                                        Label { text: "Last status update"; color: "#7f8995"; font.pixelSize: 10 }
-                                        Label { text: root.updatedAt; color: "white"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                        Label { text: "Last public update"; color: "#7f8995"; font.pixelSize: 10 }
+                                        Label { Layout.fillWidth: true; text: root.updatedAt; color: "white"; font.pixelSize: 11; elide: Text.ElideRight }
                                     }
                                 }
                             }
-
                             Label {
                                 Layout.fillWidth: true
-                                text: "Privacy boundary: the global shell reads aggregate status only. Task Center additionally reads a 0600 per-user bridge snapshot generated from the UID-filtered Unix-socket API. Prompts, raw step targets, approval tokens, credentials, results and memory content are not placed in the global status file."
+                                text: "Privacy boundary: the public shell reads aggregate status only. Task Center and Memory Center additionally read a 0600 per-user snapshot created after Unix peer UID resolution. kingaid performs server-side redaction before the bridge receives data: raw task step targets/capabilities/results, approval tokens, credentials and Memory Data are excluded."
                                 color: "#78828e"
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
@@ -348,42 +383,6 @@ ApplicationWindow {
                 }
             }
         }
-    }
-
-    function refreshStatus() {
-        var xhr = new XMLHttpRequest()
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== XMLHttpRequest.DONE) return
-            if (xhr.status !== 0 && xhr.status !== 200) {
-                root.runtimeHealth = "offline"
-                return
-            }
-            try {
-                var s = JSON.parse(xhr.responseText)
-                root.runtimeHealth = s.health || "offline"
-                root.version = s.version || "—"
-                root.policyMode = s.policy || "—"
-                root.registeredAgents = s.registered_agents || 0
-                root.activeTasks = s.active_tasks || 0
-                root.runningTasks = s.running_tasks || 0
-                root.waitingTasks = s.waiting_tasks || 0
-                root.waitingApprovalTasks = s.waiting_approval_tasks || 0
-                root.blockedTasks = s.blocked_tasks || 0
-                root.pausedTasks = s.paused_tasks || 0
-                root.planningTasks = s.planning_tasks || 0
-                root.pendingApprovals = s.pending_approvals || 0
-                root.modelProviders = s.model_providers || 0
-                root.modelMode = s.model_mode || "—"
-                root.modelStrategy = s.model_strategy || "—"
-                root.memoryMode = s.memory_mode || "—"
-                root.cloudRequired = s.cloud_required === true
-                root.updatedAt = s.updated_at || "—"
-            } catch (e) {
-                root.runtimeHealth = "offline"
-            }
-        }
-        xhr.open("GET", "file:///run/kingai/public-status.json")
-        xhr.send()
     }
 
     Timer {
