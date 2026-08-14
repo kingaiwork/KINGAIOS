@@ -28,16 +28,19 @@ func main(){
 	keyID:=fs.String("key-id","","Device Pack release key id")
 	privateKey:=fs.String("private-key","","base64 Ed25519 private key file")
 	manifestOut:=fs.String("manifest-out","","final manifest path; .sig is written beside it")
+	reviewed:=fs.Bool("redistribution-reviewed",false,"confirm that firmware/driver redistribution review is complete")
+	reviewRef:=fs.String("review-ref","","immutable ticket, change or review reference documenting redistribution approval")
 	notes:=fs.String("notes","KINGAI Device Pack release manifest.","release security notes")
 	_ = fs.Parse(os.Args[1:])
 	if *template==""||*artifactDir==""||*version==""||*keyID==""||*privateKey==""||*manifestOut==""{fail(errors.New("--template, --artifact-dir, --version, --key-id, --private-key and --manifest-out are required"))}
+	if !*reviewed || !validReviewRef(*reviewRef){fail(errors.New("release requires --redistribution-reviewed and a valid --review-ref"))}
 	if !keyIDPattern.MatchString(*keyID)||strings.Contains(*keyID,".."){fail(errors.New("invalid key id"))}
 
 	manifest,err:=devicepack.LoadIntegrationTemplate(*template);if err!=nil{fail(err)}
 	manifest.Version=strings.TrimSpace(*version)
 	manifest.Security.SignedManifest=true
 	manifest.Security.RedistributionReviewed=true
-	manifest.Security.Notes=strings.TrimSpace(*notes)
+	manifest.Security.Notes=strings.TrimSpace(*notes)+" redistribution_review_ref="+strings.TrimSpace(*reviewRef)
 	for i:=range manifest.Artifacts{
 		artifact:=&manifest.Artifacts[i]
 		if strings.ContainsAny(artifact.Name,"/\\")||artifact.Name=="."||artifact.Name==".."{fail(fmt.Errorf("unsafe artifact name %q",artifact.Name))}
@@ -66,7 +69,14 @@ func main(){
 	sigPath:=*manifestOut+".sig"
 	if err:=writeExclusive(sigPath,sigBytes,0o644);err!=nil{_ = os.Remove(*manifestOut);fail(err)}
 	sum:=sha256.Sum256(manifestBytes)
-	fmt.Printf("released Device Pack %s version=%s manifest_sha256=%s signature=%s\n",manifest.ID,manifest.Version,hex.EncodeToString(sum[:]),sigPath)
+	fmt.Printf("released Device Pack %s version=%s manifest_sha256=%s signature=%s review_ref=%s\n",manifest.ID,manifest.Version,hex.EncodeToString(sum[:]),sigPath,strings.TrimSpace(*reviewRef))
+}
+
+func validReviewRef(value string)bool{
+	value=strings.TrimSpace(value)
+	if value==""||len(value)>256{return false}
+	for _,r:=range value{if r<0x20||r==0x7f{return false}}
+	return !strings.Contains(value,"..")
 }
 
 func hashArtifact(path string)(int64,string,error){
@@ -91,8 +101,13 @@ func loadPrivateKey(path string)(ed25519.PrivateKey,error){
 func writeExclusive(path string,data []byte,mode os.FileMode)error{
 	if !filepath.IsAbs(path){return errors.New("output path must be absolute")}
 	f,err:=os.OpenFile(path,os.O_WRONLY|os.O_CREATE|os.O_EXCL,mode);if err!=nil{return err}
-	ok:=false;defer func(){_ = f.Close();if !ok{_ = os.Remove(path)}}()
-	if _,err:=f.Write(data);err!=nil{return err};if err:=f.Sync();err!=nil{return err};ok=true;return f.Close()
+	ok:=false
+	defer func(){if !ok{_ = os.Remove(path)}}()
+	if _,err:=f.Write(data);err!=nil{_ = f.Close();return err}
+	if err:=f.Sync();err!=nil{_ = f.Close();return err}
+	if err:=f.Close();err!=nil{return err}
+	ok=true
+	return nil
 }
 
 func fail(err error){fmt.Fprintln(os.Stderr,"device-pack release failed:",err);os.Exit(1)}
