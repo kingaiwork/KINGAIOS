@@ -36,7 +36,7 @@ ApplicationWindow {
     readonly property var centers: [
         { id: "home", label: "Home", glyph: "⌂", title: "Intelligence Home", note: "Your governed local AI workspace.", detail: "See runtime health, active work and the system surfaces that need your attention." },
         { id: "agents", label: "Agents", glyph: "A", title: "Agent Center", note: "Identity before authority.", detail: "KINGAI agents operate through named identities and capability policy. Privileged roles remain separated from ordinary agents." },
-        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts for local tasks without exposing task goals, targets or results through the public desktop channel." },
+        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts plus a private per-user task list without exposing other users or raw execution details." },
         { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. The overview exposes only pending counts; decisions remain behind the governed runtime path." },
         { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "Memory is owned, sensitivity-aware and governed. Content is never exposed through the public desktop status channel." },
         { id: "models", label: "Models", glyph: "◈", title: "Model Center", note: "One fabric across local and remote providers.", detail: "Model status reflects configured provider count and routing mode while private credentials remain outside the desktop overview." },
@@ -274,6 +274,14 @@ ApplicationWindow {
                         }
                     }
 
+                    TaskCenter {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 34
+                        Layout.rightMargin: 34
+                        visible: root.selectedCenter === "tasks"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 34
@@ -328,7 +336,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Privacy boundary: this desktop shell reads aggregate status only. Prompt text, task goals, approval targets, secrets, credentials and memory content are never read from the public status channel."
+                                text: "Privacy boundary: the global shell reads aggregate status only. Task Center additionally reads a 0600 per-user bridge snapshot generated from the UID-filtered Unix-socket API. Prompts, raw step targets, approval tokens, credentials, results and memory content are not placed in the global status file."
                                 color: "#78828e"
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
