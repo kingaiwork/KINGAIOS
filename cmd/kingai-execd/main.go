@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -53,15 +54,17 @@ func main() {
 		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
 		uid := peerUID(r.Context())
 		if uid != allowedUID { http.Error(w, "caller not authorized", http.StatusForbidden); return }
-		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+		r.Body = http.MaxBytesReader(w, r.Body, 48<<10)
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
 		var req executor.Request
 		if err := dec.Decode(&req); err != nil { http.Error(w, "invalid request", http.StatusBadRequest); return }
+		var extra any
+		if err := dec.Decode(&extra); !errors.Is(err, io.EOF) { http.Error(w, "invalid trailing data", http.StatusBadRequest); return }
 		result, execErr := broker.Execute(r.Context(), req)
 		if execErr != nil && result.Message == "" { result.Message = execErr.Error() }
 		reason := result.Message
-		if err := audit.Append(auditPath, audit.Event{Type: "execution.run", Agent: req.Agent, Capability: req.Capability, Allowed: execErr == nil && result.OK, PeerUID: uid, TargetHash: audit.HashTarget(req.Target), Reason: reason}); err != nil {
+		if err := audit.Append(auditPath, audit.Event{Type: "execution.run", ExecutionID: result.ExecutionID, Agent: req.Agent, Capability: req.Capability, Allowed: execErr == nil && result.OK, PeerUID: uid, TargetHash: audit.HashTarget(req.Target), DurationMS: result.DurationMS, Reason: reason}); err != nil {
 			log.Printf("execution audit append failed: %v", err)
 		}
 		writeJSON(w, http.StatusOK, result)
