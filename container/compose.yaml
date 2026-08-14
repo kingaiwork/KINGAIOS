@@ -1,0 +1,22 @@
+services:
+  kingai:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
+    image: kingai-os:dev
+    restart: unless-stopped
+    volumes:
+      - kingai-state:/var/lib/kingai
+      - kingai-logs:/var/log/kingai
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /run/kingai:uid=999,gid=995,mode=0755
+      - /tmp
+
+volumes:
+  kingai-state:
+  kingai-logs:
