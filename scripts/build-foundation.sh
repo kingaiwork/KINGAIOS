@@ -22,10 +22,11 @@ build_one() {
   echo "building KINGAI D5 core $version for linux/$goarch"
 
   local cmd pkg
-  for cmd in kingai kingaid kingai-update kingai-installer kingai-recovery; do
+  for cmd in kingai kingaid kingai-execd kingai-update kingai-installer kingai-recovery; do
     case "$cmd" in
       kingai) pkg=./cmd/kingai ;;
       kingaid) pkg=./cmd/kingaid ;;
+      kingai-execd) pkg=./cmd/kingai-execd ;;
       kingai-update) pkg=./cmd/kingai-update ;;
       kingai-installer) pkg=./cmd/kingai-installer ;;
       kingai-recovery) pkg=./cmd/kingai-recovery ;;
@@ -44,7 +45,7 @@ channel=dev
 platform=linux/$goarch
 architecture=D5 Alpha Runtime Foundation
 source_commit=${GITHUB_SHA:-local}
-core_binaries=kingai,kingaid,kingai-update,kingai-installer,kingai-recovery
+core_binaries=kingai,kingaid,kingai-execd,kingai-update,kingai-installer,kingai-recovery
 platform_profiles=server,desktop,iot,container
 META
 }
