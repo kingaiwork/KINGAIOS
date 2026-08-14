@@ -69,6 +69,7 @@ build_binary() {
     kingaid) pkg=./cmd/kingaid ;;
     kingai-execd) pkg=./cmd/kingai-execd ;;
     kingai-update) pkg=./cmd/kingai-update ;;
+    kingai-devicepack) pkg=./cmd/kingai-devicepack ;;
     kingai-installer) pkg=./cmd/kingai-installer ;;
     kingai-recovery) pkg=./cmd/kingai-recovery ;;
     *) echo "unknown KINGAI binary: $cmd" >&2; exit 2 ;;
@@ -87,7 +88,9 @@ case "$PROFILE" in
     # Edge keeps the governed non-root Runtime but does not ship the generic
     # privileged execution broker. Device-specific privileged operations are
     # reached only through exact Device Pack capability handlers over AF_UNIX.
-    KINGAI_BINARIES=(kingai kingaid kingai-update)
+    # The root-only Device Pack admin is a trust-root lifecycle tool, not an
+    # Agent execution surface.
+    KINGAI_BINARIES=(kingai kingaid kingai-update kingai-devicepack)
     ;;
   recovery)
     KINGAI_BINARIES=(kingai kingai-update kingai-recovery)
@@ -104,6 +107,9 @@ if [[ "$PROFILE" != "recovery" ]]; then
 fi
 install -Dm755 "$OUT/kingai-update-$ARCH" "$ROOT/usr/lib/kingai/kingai-update"
 ln -sfn /usr/lib/kingai/kingai-update "$ROOT/usr/bin/kingai-update"
+if [[ "$PROFILE" == "iot" ]]; then
+  install -Dm755 "$OUT/kingai-devicepack-$ARCH" "$ROOT/usr/sbin/kingai-devicepack"
+fi
 
 if [[ "$PROFILE" == "server" || "$PROFILE" == "desktop" ]]; then
   install -Dm755 "$OUT/kingai-execd-$ARCH" "$ROOT/usr/lib/kingai/kingai-execd"
@@ -172,6 +178,11 @@ install -Dm644 legal/THIRD_PARTY.md "$ROOT/usr/share/kingai/legal/THIRD_PARTY.md
 install -Dm644 legal/models.json "$ROOT/usr/share/kingai/legal/models.json"
 if [[ "$PROFILE" == "iot" ]]; then
   install -Dm644 iot/HANDLER-PROTOCOL.md "$ROOT/usr/share/doc/kingai-os/IOT-HANDLER-PROTOCOL.md"
+  install -Dm644 iot/HANDLER-SDK.md "$ROOT/usr/share/doc/kingai-os/IOT-HANDLER-SDK.md"
+  install -Dm644 iot/BOARD-PORTING.md "$ROOT/usr/share/doc/kingai-os/IOT-BOARD-PORTING.md"
+  install -Dm644 iot/PROVISIONING.md "$ROOT/usr/share/doc/kingai-os/IOT-PROVISIONING.md"
+  install -Dm644 iot/OTA.md "$ROOT/usr/share/doc/kingai-os/IOT-OTA.md"
+  install -Dm644 iot/HIL-GATES.md "$ROOT/usr/share/doc/kingai-os/IOT-HIL-GATES.md"
 fi
 
 chroot "$ROOT" dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' | LC_ALL=C sort > "$ROOT/usr/share/kingai/legal/packages.tsv"
@@ -221,6 +232,7 @@ fi
 
 if [[ "$PROFILE" == "iot" ]]; then
   test -x "$ROOT/usr/lib/kingai/kingaid"
+  test -x "$ROOT/usr/sbin/kingai-devicepack"
   test ! -e "$ROOT/usr/lib/kingai/kingai-execd"
   test ! -e "$ROOT/usr/lib/systemd/system/kingai-execd.service"
   test ! -e "$ROOT/usr/lib/kingai/kingai-installer"
@@ -229,13 +241,23 @@ if [[ "$PROFILE" == "iot" ]]; then
   test -d "$ROOT/etc/kingai/device-packs"
   test -f "$ROOT/usr/share/kingai/iot/device-pack.schema.json"
   test -f "$ROOT/usr/share/doc/kingai-os/IOT-HANDLER-PROTOCOL.md"
+  test -f "$ROOT/usr/share/doc/kingai-os/IOT-HANDLER-SDK.md"
+  test -f "$ROOT/usr/share/doc/kingai-os/IOT-BOARD-PORTING.md"
+  test -f "$ROOT/usr/share/doc/kingai-os/IOT-PROVISIONING.md"
+  test -f "$ROOT/usr/share/doc/kingai-os/IOT-OTA.md"
+  test -f "$ROOT/usr/share/doc/kingai-os/IOT-HIL-GATES.md"
   test -f "$ROOT/usr/lib/tmpfiles.d/kingai-iot.conf"
-  grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+  grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
   grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=16$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
   grep -q '^Environment=KINGAI_DEVICE_RUNTIME_ENABLED=true$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+  grep -q '^Environment=KINGAI_DEVICE_IDENTITY=/etc/kingai/device.json$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
   grep -q '^Environment=KINGAI_DEVICE_PACK_DIR=/etc/kingai/device-packs$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+  grep -q '^Environment=KINGAI_DEVICE_ARTIFACT_ROOT=/usr/lib/kingai/device-packs$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+  grep -q '^Environment=KINGAI_DEVICE_TRUST_DIR=/etc/kingai/trust/device-pack-keys$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
   grep -q '^Environment=KINGAI_DEVICE_HANDLER_ROOT=/run/kingai-device$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
   grep -q '^Environment=KINGAI_EXECD_SOCKET=/run/kingai/device-broker.sock$' "$ROOT/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+  chroot "$ROOT" /usr/sbin/kingai-devicepack version >/dev/null
+  chroot "$ROOT" /usr/sbin/kingai-devicepack list >/dev/null
 fi
 
 if [[ "${KINGAI_SKIP_ARCHIVE:-0}" == "1" ]]; then
