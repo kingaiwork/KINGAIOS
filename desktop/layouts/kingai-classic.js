@@ -1,8 +1,15 @@
 function primaryPanel() {
-    let panel = null;
-    if (panelIds.length > 0) panel = panelById(panelIds[0]);
-    if (!panel) panel = new Panel;
-    return panel;
+    for (const id of panelIds) {
+        const candidate = panelById(id);
+        if (!candidate) continue;
+        candidate.currentConfigGroup = ["General"];
+        if (String(candidate.readConfig("kingaiManaged")) === "true") return candidate;
+    }
+    if (panelIds.length > 0) {
+        const fallback = panelById(panelIds[0]);
+        if (fallback) return fallback;
+    }
+    return new Panel;
 }
 function clearWidgets(panel) {
     const ids = panel.widgetIds;
