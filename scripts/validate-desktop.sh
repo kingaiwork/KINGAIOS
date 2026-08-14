@@ -95,9 +95,23 @@ for center in ("home", "agents", "tasks", "approvals", "memory", "models", "auto
         raise SystemExit(f"KINGAI Intelligence shell missing center: {center}")
 if 'file:///run/kingai/public-status.json' not in shell:
     raise SystemExit("KINGAI Intelligence shell must use the sanitized public runtime status channel")
-for forbidden in ("/v1/memory/list", "/v1/approval/list", "/v1/tasks/list", "api_key", "password", "secret"):
+if 'Application.arguments' not in shell:
+    raise SystemExit("KINGAI Intelligence shell must use the Qt Application.arguments interface")
+for forbidden in (
+    "/v1/memory/list",
+    "/v1/approval/list",
+    "/v1/tasks/list",
+    "api_key=",
+    "password=",
+    "secret=",
+    "authorization: bearer",
+):
     if forbidden.lower() in shell.lower():
-        raise SystemExit(f"KINGAI Intelligence public shell contains forbidden direct/sensitive token: {forbidden}")
+        raise SystemExit(f"KINGAI Intelligence public shell contains forbidden direct/sensitive pattern: {forbidden}")
+
+launch = Path("desktop/intelligence/launch.sh").read_text()
+if 'Main.qml -- --center' not in launch:
+    raise SystemExit("KINGAI Intelligence launcher must separate qml runtime options from app arguments")
 
 launcher = Path("distro/overlay/usr/share/applications/kingai-intelligence.desktop").read_text()
 for action in ("Agents", "Tasks", "Approvals", "Memory", "Models", "Automations", "Health"):
