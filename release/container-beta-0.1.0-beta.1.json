@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "product": "KINGAI OS Container",
+  "profile": "container",
+  "channel": "beta",
+  "version": "0.1.0-beta.1",
+  "image": "ghcr.io/kingaiwork/kingai-os",
+  "tags": [
+    "0.1.0-beta.1",
+    "beta"
+  ],
+  "digest": "sha256:babcfdb9bf2cb544ebd29b98d613b1fad0da66457f2885a6022a944be29fe470",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "published_at": "2026-08-14T18:41:46Z",
+  "source_repository": "kingaiwork/KINGAIOS",
+  "release_source_revision": "5e47c8f7c29f5bf5993aea8c8c08d79ac94796de",
+  "release_run_id": 31825622700,
+  "release_artifact_id": 9230224992,
+  "management_transport": "unix-socket-only",
+  "runtime_user": "_kingai",
+  "runtime_uid": 10001,
+  "runtime_gid": 10001,
+  "persistent_paths": [
+    "/var/lib/kingai",
+    "/var/log/kingai"
+  ],
+  "security": {
+    "fixable_critical_vulnerability_gate": true,
+    "read_only_root_supported": true,
+    "drop_all_capabilities_supported": true,
+    "no_new_privileges_supported": true
+  },
+  "supply_chain": {
+    "buildkit_sbom": true,
+    "buildkit_provenance": true,
+    "cyclonedx_sbom": true,
+    "github_provenance_attestation": true,
+    "github_sbom_attestation": true,
+    "signature": "sigstore-keyless-cosign",
+    "signature_verified": true
+  },
+  "post_release_validation": {
+    "container_ci_run_id": 31837460260,
+    "validation_revision": "30d8d18088e2d4ed78b6823145b04945cf3edfab",
+    "amd64_runtime_persistence_smoke": true,
+    "arm64_runtime_persistence_smoke": true,
+    "amd64_fixable_critical_scan": true,
+    "arm64_fixable_critical_scan": true,
+    "multiarch_oci_archive_validation": true
+  },
+  "promotion": {
+    "beta_signed_release": true,
+    "stable_release_allowed": false,
+    "stable_block_reason": "production_signing_ready=false"
+  }
+}
