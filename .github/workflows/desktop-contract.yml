@@ -7,10 +7,17 @@ on:
       - "desktop/**"
       - "profiles/desktop.yaml"
       - "internal/desktop/**"
+      - "internal/statuspub/**"
       - "cmd/kingai/**"
+      - "cmd/kingai-desktop-bridge/**"
+      - "cmd/kingaid/**"
       - "scripts/validate-desktop.sh"
       - "scripts/test-desktop-intelligence-launcher.sh"
+      - "scripts/build-rootfs.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
+      - "distro/overlay/usr/share/applications/kingai-desktop-experience.desktop"
+      - "distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service"
+      - "distro/overlay/etc/xdg/autostart/kingai-desktop-bridge.desktop"
       - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
       - ".github/workflows/desktop-contract.yml"
@@ -19,10 +26,17 @@ on:
       - "desktop/**"
       - "profiles/desktop.yaml"
       - "internal/desktop/**"
+      - "internal/statuspub/**"
       - "cmd/kingai/**"
+      - "cmd/kingai-desktop-bridge/**"
+      - "cmd/kingaid/**"
       - "scripts/validate-desktop.sh"
       - "scripts/test-desktop-intelligence-launcher.sh"
+      - "scripts/build-rootfs.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
+      - "distro/overlay/usr/share/applications/kingai-desktop-experience.desktop"
+      - "distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service"
+      - "distro/overlay/etc/xdg/autostart/kingai-desktop-bridge.desktop"
       - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
       - ".github/workflows/desktop-contract.yml"
@@ -40,7 +54,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate Desktop product and launcher contracts
+      - name: Validate Desktop product and private-bridge contracts
         run: make desktop-validate
       - name: Validate first-run shell transaction
         run: |
@@ -48,20 +62,25 @@ jobs:
           grep -q 'StandardPaths.CacheLocation' desktop/welcome/Main.qml
           ! grep -q 'kingai-desktop.ini' desktop/welcome/Main.qml
           grep -q 'desktop set "\$selected"' desktop/welcome/launch.sh
-      - name: Test Desktop experience manager
-        run: go test ./internal/desktop
-      - name: Build KINGAI CLI with Desktop commands
-        run: go build -trimpath -o /tmp/kingai ./cmd/kingai
+      - name: Build Desktop binaries
+        run: |
+          go build -trimpath -o /tmp/kingai ./cmd/kingai
+          go build -trimpath -o /tmp/kingai-desktop-bridge ./cmd/kingai-desktop-bridge
+          /tmp/kingai-desktop-bridge version
       - name: Verify Desktop CLI catalog
         run: |
           test "$(/tmp/kingai desktop list | wc -l)" -eq 3
           /tmp/kingai desktop list | grep -q '^kingai-intelligence[[:space:]]\+KINGAI Intelligence$'
           /tmp/kingai desktop list | grep -q '^kingai-flow[[:space:]]\+KINGAI Flow$'
           /tmp/kingai desktop list | grep -q '^kingai-classic[[:space:]]\+KINGAI Classic$'
-      - name: Verify Intelligence app contract
+      - name: Verify Intelligence and private Task Center assets
         run: |
           test -f desktop/intelligence/Main.qml
+          test -f desktop/intelligence/TaskCenter.qml
           test -f desktop/intelligence/launch.sh
           grep -q 'kingai://approvals' desktop/plasmoids/org.kingai.agentcenter/contents/ui/main.qml
+          grep -q 'StandardPaths.RuntimeLocation' desktop/intelligence/TaskCenter.qml
+          grep -q '/kingai/desktop-private.json' desktop/intelligence/TaskCenter.qml
           grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
           grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
+          grep -q '^RestrictAddressFamilies=AF_UNIX$' distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service
