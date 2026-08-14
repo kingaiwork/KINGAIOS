@@ -62,27 +62,53 @@ permissions:
 
 jobs:
   smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Validate release policy
         run: bash scripts/test-container-release-policy.sh
-      - name: Build and smoke test hardened amd64 container
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Run hardened runtime and persistence smoke
+        env:
+          KINGAI_CONTAINER_TEST_PLATFORM: ${{ matrix.platform }}
         run: bash scripts/test-container.sh
 
   security:
     needs: smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Build scan image
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build architecture-specific scan image
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
           version=$(tr -d '[:space:]' < VERSION)
-          docker build \
+          docker buildx build \
             --file container/Dockerfile \
+            --platform "$PLATFORM" \
             --build-arg "VERSION=$version" \
             --build-arg "REVISION=$GITHUB_SHA" \
             --tag kingai-os:scan \
+            --load \
             .
       - name: Block fixable critical vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
