@@ -20,7 +20,10 @@ INITRD=$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -printf '%p\n' | sor
 [[ -n "$KERNEL" && -n "$INITRD" ]] || { echo "kernel/initrd missing" >&2; exit 1; }
 rm -rf "$WORK";mkdir -p "$ISO_ROOT/casper" "$ISO_ROOT/boot/grub" "$ISO_ROOT/.disk" "$ISO_ROOT/sbom"
 cp "$KERNEL" "$ISO_ROOT/casper/vmlinuz";cp "$INITRD" "$ISO_ROOT/casper/initrd";cp "$SBOM" "$ISO_ROOT/sbom/KINGAI-OS.spdx.json"
-mksquashfs "$ROOT" "$ISO_ROOT/casper/filesystem.squashfs" -comp xz -b 1M -noappend -no-xattrs -wildcards -e 'boot/vmlinuz-*' 'boot/initrd.img-*'
+# The embedded squashfs is also the installer source. Keep /boot kernel and
+# initramfs inside it even though Casper carries boot copies at /casper/ too.
+# This small duplication makes the ISO self-contained for A/B disk installs.
+mksquashfs "$ROOT" "$ISO_ROOT/casper/filesystem.squashfs" -comp xz -b 1M -noappend -no-xattrs
 du -sx --block-size=1 "$ROOT" | cut -f1 > "$ISO_ROOT/casper/filesystem.size"
 chroot "$ROOT" dpkg-query -W -f='${binary:Package} ${Version}\n' | LC_ALL=C sort > "$ISO_ROOT/casper/filesystem.manifest"
 printf 'KINGAI OS %s %s amd64\n' "$VERSION" "${PROFILE^}" > "$ISO_ROOT/.disk/info"
