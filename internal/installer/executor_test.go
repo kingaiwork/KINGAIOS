@@ -83,6 +83,19 @@ func TestPreparePersistentStateLayout(t *testing.T) {
 			t.Fatalf("STATE path %s mode=%o want 700", rel, got)
 		}
 	}
+	marker := filepath.Join(state, "kingai/runtime/.layout-v1-ready")
+	markerData, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("fresh install STATE marker missing: %v", err)
+	}
+	if string(markerData) != "layout=1\norigin=fresh-install\n" {
+		t.Fatalf("unexpected fresh install STATE marker: %q", markerData)
+	}
+	if info, err := os.Stat(marker); err != nil {
+		t.Fatal(err)
+	} else if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("fresh install STATE marker mode=%o want 600", got)
+	}
 	for _, root := range []string{rootA, rootB} {
 		for _, rel := range []string{"var/lib/kingai-state", "var/lib/kingai", "var/log/kingai"} {
 			if info, err := os.Stat(filepath.Join(root, rel)); err != nil || !info.IsDir() {
