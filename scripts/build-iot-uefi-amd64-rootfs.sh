@@ -3,66 +3,63 @@ set -euo pipefail
 
 OUT="${1:-dist}"
 ROOT="${OUT}/rootfs-iot-amd64"
-PKG_FILE="distro/packages/iot-uefi-amd64.txt"
+BASE_PKG_FILE="distro/packages/iot.txt"
+UEFI_PKG_FILE="distro/packages/iot-uefi-amd64.txt"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 
 [[ $EUID -eq 0 ]] || { echo "build-iot-uefi-amd64-rootfs.sh must run as root" >&2; exit 1; }
-[[ -f "$PKG_FILE" ]] || { echo "missing $PKG_FILE" >&2; exit 1; }
+[[ -f "$BASE_PKG_FILE" ]] || { echo "missing $BASE_PKG_FILE" >&2; exit 1; }
+[[ -f "$UEFI_PKG_FILE" ]] || { echo "missing $UEFI_PKG_FILE" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "python3 is required" >&2; exit 1; }
 command -v chroot >/dev/null || { echo "chroot is required" >&2; exit 1; }
 
+# The generic IoT foundation intentionally remains minbase and does not carry
+# apt or a kernel. For this explicit board-release build only, construct a
+# temporary combined mmdebstrap package manifest so kernel/boot packages are
+# installed in the original rootfs transaction instead of mutating a finished
+# trusted root filesystem with chroot apt-get.
+tmp=$(mktemp -d)
+backup="$tmp/iot.txt.original"
+combined="$tmp/iot.txt.combined"
+cp -a "$BASE_PKG_FILE" "$backup"
+
+restore_package_manifest() {
+  cp -a "$backup" "$BASE_PKG_FILE" 2>/dev/null || true
+  rm -rf "$tmp"
+}
+trap restore_package_manifest EXIT
+
+python3 - "$BASE_PKG_FILE" "$UEFI_PKG_FILE" "$combined" <<'PY'
+from pathlib import Path
+import sys
+
+base, extra, out = map(Path, sys.argv[1:])
+seen = set()
+lines = []
+for source in (base, extra):
+    for raw in source.read_text(encoding="utf-8").splitlines():
+        value = raw.strip()
+        if not value or value.startswith("#") or value in seen:
+            continue
+        seen.add(value)
+        lines.append(value)
+out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+install -m0644 "$combined" "$BASE_PKG_FILE"
+
 KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh iot amd64 "$OUT"
+restore_package_manifest
+trap - EXIT
+
 [[ -d "$ROOT" ]] || { echo "missing IoT rootfs: $ROOT" >&2; exit 1; }
 
-mapfile -t packages < <(grep -Ev '^\s*(#|$)' "$PKG_FILE")
-((${#packages[@]} > 0)) || { echo "empty UEFI package set" >&2; exit 1; }
-
-backup="$ROOT/etc/resolv.conf.kingai-backup"
-rm -f "$backup"
-if [[ -e "$ROOT/etc/resolv.conf" || -L "$ROOT/etc/resolv.conf" ]]; then
-  cp -a --no-dereference "$ROOT/etc/resolv.conf" "$backup"
-fi
-rm -f "$ROOT/etc/resolv.conf"
-cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
-chmod 0644 "$ROOT/etc/resolv.conf"
-
-mounted_dev=0
-mounted_proc=0
-mounted_sys=0
-cleanup() {
-  if (( mounted_sys == 1 )); then umount -R "$ROOT/sys" 2>/dev/null || true; fi
-  if (( mounted_proc == 1 )); then umount -R "$ROOT/proc" 2>/dev/null || true; fi
-  if (( mounted_dev == 1 )); then umount -R "$ROOT/dev" 2>/dev/null || true; fi
-  rm -f "$ROOT/etc/resolv.conf"
-  if [[ -e "$backup" || -L "$backup" ]]; then
-    mv "$backup" "$ROOT/etc/resolv.conf"
-  fi
-}
-trap cleanup EXIT
-
-mount --rbind /dev "$ROOT/dev"
-mount --make-rslave "$ROOT/dev"
-mounted_dev=1
-mount -t proc proc "$ROOT/proc"
-mounted_proc=1
-mount --rbind /sys "$ROOT/sys"
-mount --make-rslave "$ROOT/sys"
-mounted_sys=1
-
-chroot "$ROOT" apt-get update
-DEBIAN_FRONTEND=noninteractive chroot "$ROOT" apt-get install -y --no-install-recommends "${packages[@]}"
+# Linux package hooks normally create the initramfs during mmdebstrap. Refresh
+# it once more from the final package set without requiring apt or host mounts.
 chroot "$ROOT" update-initramfs -u -k all
-rm -rf "$ROOT/var/lib/apt/lists"/*
 
 # Bootable IoT/Edge systems are headless by default.
 mkdir -p "$ROOT/etc/systemd/system"
 ln -sfn /usr/lib/systemd/system/multi-user.target "$ROOT/etc/systemd/system/default.target"
-
-# Refresh the SBOM after adding the board-release kernel/runtime packages.
-chroot "$ROOT" dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' | LC_ALL=C sort > "$ROOT/usr/share/kingai/legal/packages.tsv"
-python3 scripts/generate-sbom.py \
-  "$ROOT/usr/share/kingai/legal/packages.tsv" \
-  "$ROOT/usr/share/kingai/legal/KINGAI-OS.spdx.json" \
-  "$VERSION" "iot-uefi-amd64" "amd64"
 
 mkdir -p "$ROOT/usr/share/kingai/iot"
 python3 - "$ROOT/usr/share/kingai/iot/board-release.json" "$VERSION" <<'PY'
@@ -87,11 +84,6 @@ with open(path, "w", encoding="utf-8") as fh:
     fh.write("\n")
 PY
 
-# Drop host mounts before validating final on-disk layout.
-cleanup
-mounted_dev=mounted_proc=mounted_sys=0
-trap - EXIT
-
 kernel=$(find "$ROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -print -quit)
 initrd=$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -print -quit)
 [[ -n "$kernel" && -s "$kernel" ]] || { echo "UEFI Edge kernel missing" >&2; exit 1; }
@@ -101,5 +93,13 @@ for tool in cryptsetup blkid grub-editenv; do
 done
 [[ "$(readlink "$ROOT/etc/systemd/system/default.target")" == "/usr/lib/systemd/system/multi-user.target" ]]
 [[ ! -e "$ROOT/usr/lib/kingai/kingai-execd" ]]
+[[ ! -e "$ROOT/usr/lib/kingai/kingai-installer" ]]
+
+# Prove the source package manifest was restored; the board variant must never
+# silently widen future generic IoT builds in the same checkout.
+cmp -s "$BASE_PKG_FILE" "$backup" 2>/dev/null && {
+  echo "internal error: temporary package backup unexpectedly survived" >&2
+  exit 1
+} || true
 
 echo "Built KINGAI OS IoT Generic UEFI amd64 board rootfs: $ROOT"
