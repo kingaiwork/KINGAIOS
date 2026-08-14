@@ -17,6 +17,8 @@ kingai:
   cli: true
   daemon: true
   policy_engine: true
+  approval_broker: true
+  task_graph: true
   model_fabric: true
   memory_fabric: true
   agent_runtime: true
