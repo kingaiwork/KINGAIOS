@@ -12,11 +12,14 @@ ApplicationWindow {
     visible: true
     title: "KINGAI OS Desktop"
     color: "#111418"
-    property string selected: desktopSettings.experience === "" ? "kingai-intelligence" : desktopSettings.experience
+    property string selected: welcomeSettings.experience === "" ? "kingai-intelligence" : welcomeSettings.experience
 
+    // The Welcome UI only stages the user's choice. launch.sh commits it through
+    // `kingai desktop set`, so a failed theme/layout application never becomes a
+    // persistent Desktop selection.
     Settings {
-        id: desktopSettings
-        location: StandardPaths.writableLocation(StandardPaths.ConfigLocation) + "/kingai-desktop.ini"
+        id: welcomeSettings
+        location: StandardPaths.writableLocation(StandardPaths.CacheLocation) + "/kingai-welcome.ini"
         property string experience: ""
     }
 
@@ -124,8 +127,8 @@ ApplicationWindow {
             Button {
                 text: "Enter Desktop"
                 onClicked: {
-                    desktopSettings.experience = root.selected
-                    desktopSettings.sync()
+                    welcomeSettings.experience = root.selected
+                    welcomeSettings.sync()
                     Qt.quit()
                 }
             }
