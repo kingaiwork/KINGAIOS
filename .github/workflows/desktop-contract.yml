@@ -9,6 +9,8 @@ on:
       - "internal/desktop/**"
       - "cmd/kingai/**"
       - "scripts/validate-desktop.sh"
+      - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
+      - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
       - ".github/workflows/desktop-contract.yml"
   pull_request:
@@ -18,6 +20,8 @@ on:
       - "internal/desktop/**"
       - "cmd/kingai/**"
       - "scripts/validate-desktop.sh"
+      - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
+      - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
       - ".github/workflows/desktop-contract.yml"
   workflow_dispatch:
@@ -52,3 +56,11 @@ jobs:
           /tmp/kingai desktop list | grep -q '^kingai-intelligence[[:space:]]\+KINGAI Intelligence$'
           /tmp/kingai desktop list | grep -q '^kingai-flow[[:space:]]\+KINGAI Flow$'
           /tmp/kingai desktop list | grep -q '^kingai-classic[[:space:]]\+KINGAI Classic$'
+      - name: Verify Intelligence app contract
+        run: |
+          test -f desktop/intelligence/Main.qml
+          test -f desktop/intelligence/launch.sh
+          bash -n desktop/intelligence/launch.sh
+          grep -q 'kingai://approvals' desktop/plasmoids/org.kingai.agentcenter/contents/ui/main.qml
+          grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
+          grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
