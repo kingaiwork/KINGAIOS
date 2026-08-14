@@ -1,0 +1,4 @@
+linux-generic
+cryptsetup
+util-linux
+grub2-common
