@@ -1,0 +1,23 @@
+{
+  "schema": 2,
+  "id": "kingai.raspberry-pi-cm5",
+  "name": "KINGAI Raspberry Pi CM5 Integration Template",
+  "version": "0.1.0-template",
+  "arch": "arm64",
+  "vendor": "Raspberry Pi",
+  "board_ids": ["raspberry-pi-cm5"],
+  "boot": {"method":"vendor","firmware_required":true,"dtb_required":true,"secure_boot_capable":false},
+  "artifacts": [
+    {"name":"vendor-firmware.bin","kind":"firmware","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0,"license":"REVIEW_REQUIRED","source":"REPLACE_WITH_VENDOR_SOURCE"},
+    {"name":"board.dtb","kind":"dtb","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0}
+  ],
+  "capabilities": [
+    {"id":"device.telemetry.read","handler":"telemetry-read","operation":"read","risk":"L0","approval_required":false,"resources":["sensor:board"]},
+    {"id":"device.gpio.read","handler":"gpio-read","operation":"read","risk":"L1","approval_required":false,"resources":["gpio:declared"]},
+    {"id":"device.gpio.write","handler":"gpio-write","operation":"write","risk":"L1","approval_required":false,"resources":["gpio:declared"]},
+    {"id":"device.spi.read","handler":"spi-read","operation":"read","risk":"L1","approval_required":false,"resources":["spi:declared"]},
+    {"id":"device.spi.write","handler":"spi-write","operation":"write","risk":"L1","approval_required":false,"resources":["spi:declared"]},
+    {"id":"device.power.control","handler":"power-control","operation":"control","risk":"L4","approval_required":true,"resources":["power:system"]}
+  ],
+  "security": {"signed_manifest":false,"redistribution_reviewed":false,"notes":"INTEGRATION TEMPLATE ONLY; carrier-board resources must be declared exactly before signing."}
+}
