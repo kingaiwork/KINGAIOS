@@ -30,7 +30,6 @@ permissions:
   packages: write
   id-token: write
   attestations: write
-  artifact-metadata: write
 
 jobs:
   release:
@@ -60,15 +59,12 @@ jobs:
             channel='${{ inputs.channel }}'
           fi
 
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]] || {
-            echo "invalid release version: $version" >&2
-            exit 2
-          }
-          case "$channel" in beta|rc|stable) ;; *) echo "invalid channel: $channel" >&2; exit 2 ;; esac
-          case "$channel:$version" in
-            beta:*-beta.*|rc:*-rc.*|stable:[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "channel/version mismatch: $channel / $version" >&2; exit 2 ;;
-          esac
+          case "$channel" in
+            beta) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] ;;
+            rc) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] ;;
+            stable) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+            *) echo "invalid channel: $channel" >&2; exit 2 ;;
+          esac || { echo "channel/version mismatch: $channel / $version" >&2; exit 2; }
 
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
@@ -157,6 +153,7 @@ jobs:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+          create-storage-record: false
 
       - name: Attest CycloneDX SBOM
         uses: actions/attest@v4.2.1
@@ -165,6 +162,7 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: kingai-os.cdx.json
           push-to-registry: true
+          create-storage-record: false
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
