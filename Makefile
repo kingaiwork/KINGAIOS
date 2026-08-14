@@ -26,6 +26,7 @@ test:
 
 check: vet test
 	bash -n scripts/*.sh
+	bash scripts/test-container-release-policy.sh
 	python3 -m py_compile scripts/validate-oci-archive.py
 	@test -f profiles/server.yaml
 	@test -f profiles/desktop.yaml
@@ -35,6 +36,7 @@ check: vet test
 	@test -f container/compose.yaml
 	@test -f container/kubernetes.yaml
 	@test -f scripts/test-container.sh
+	@test -f scripts/test-container-release-policy.sh
 	@test -f scripts/validate-oci-archive.py
 	@test -f .github/workflows/container.yml
 	@test -f .github/workflows/container-release.yml
