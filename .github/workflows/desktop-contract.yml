@@ -7,11 +7,14 @@ on:
       - "desktop/**"
       - "profiles/desktop.yaml"
       - "internal/desktop/**"
+      - "internal/desktopbridge/**"
+      - "internal/memory/**"
       - "internal/statuspub/**"
       - "cmd/kingai/**"
       - "cmd/kingai-desktop-bridge/**"
       - "cmd/kingaid/**"
       - "scripts/validate-desktop.sh"
+      - "scripts/validate-desktop-private.sh"
       - "scripts/test-desktop-intelligence-launcher.sh"
       - "scripts/build-rootfs.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
@@ -26,11 +29,14 @@ on:
       - "desktop/**"
       - "profiles/desktop.yaml"
       - "internal/desktop/**"
+      - "internal/desktopbridge/**"
+      - "internal/memory/**"
       - "internal/statuspub/**"
       - "cmd/kingai/**"
       - "cmd/kingai-desktop-bridge/**"
       - "cmd/kingaid/**"
       - "scripts/validate-desktop.sh"
+      - "scripts/validate-desktop-private.sh"
       - "scripts/test-desktop-intelligence-launcher.sh"
       - "scripts/build-rootfs.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
@@ -54,7 +60,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate Desktop product and private-bridge contracts
+      - name: Validate Desktop product and private-data contracts
         run: make desktop-validate
       - name: Validate first-run shell transaction
         run: |
@@ -65,6 +71,7 @@ jobs:
       - name: Build Desktop binaries
         run: |
           go build -trimpath -o /tmp/kingai ./cmd/kingai
+          go build -trimpath -o /tmp/kingaid ./cmd/kingaid
           go build -trimpath -o /tmp/kingai-desktop-bridge ./cmd/kingai-desktop-bridge
           /tmp/kingai-desktop-bridge version
       - name: Verify Desktop CLI catalog
@@ -73,14 +80,19 @@ jobs:
           /tmp/kingai desktop list | grep -q '^kingai-intelligence[[:space:]]\+KINGAI Intelligence$'
           /tmp/kingai desktop list | grep -q '^kingai-flow[[:space:]]\+KINGAI Flow$'
           /tmp/kingai desktop list | grep -q '^kingai-classic[[:space:]]\+KINGAI Classic$'
-      - name: Verify Intelligence and private Task Center assets
+      - name: Verify Intelligence private centers
         run: |
           test -f desktop/intelligence/Main.qml
+          test -f desktop/intelligence/MetricCard.qml
           test -f desktop/intelligence/TaskCenter.qml
+          test -f desktop/intelligence/MemoryCenter.qml
           test -f desktop/intelligence/launch.sh
           grep -q 'kingai://approvals' desktop/plasmoids/org.kingai.agentcenter/contents/ui/main.qml
           grep -q 'StandardPaths.RuntimeLocation' desktop/intelligence/TaskCenter.qml
+          grep -q 'StandardPaths.RuntimeLocation' desktop/intelligence/MemoryCenter.qml
           grep -q '/kingai/desktop-private.json' desktop/intelligence/TaskCenter.qml
+          grep -q '/kingai/desktop-private.json' desktop/intelligence/MemoryCenter.qml
+          grep -q 'MemoryCenter {' desktop/intelligence/Main.qml
           grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
           grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
           grep -q '^RestrictAddressFamilies=AF_UNIX$' distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service
