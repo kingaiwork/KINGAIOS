@@ -2,6 +2,7 @@
 
 ARG GO_IMAGE=golang:1.25-bookworm
 ARG BASE_IMAGE=ubuntu:26.04
+ARG VERSION
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS build
 WORKDIR /src
@@ -10,8 +11,9 @@ RUN go mod download
 COPY . .
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG VERSION
 RUN set -eux; \
-    version="$(tr -d '[:space:]' < VERSION)"; \
+    version="${VERSION:-$(tr -d '[:space:]' < VERSION)}"; \
     CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -trimpath -tags osusergo -ldflags "-s -w -buildid= -X main.version=${version}" -o /out/kingai ./cmd/kingai; \
     CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -trimpath -tags osusergo -ldflags "-s -w -buildid= -X main.version=${version}" -o /out/kingaid ./cmd/kingaid
 
@@ -68,6 +70,6 @@ ENV HOME=/var/lib/kingai \
 
 VOLUME ["/var/lib/kingai", "/var/log/kingai"]
 STOPSIGNAL SIGTERM
-USER ${KINGAI_UID}:${KINGAI_GID}
+USER _kingai:kingai
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/usr/bin/kingai", "model", "status"]
 ENTRYPOINT ["/usr/lib/kingai/kingaid"]
