@@ -52,7 +52,7 @@ jobs:
           PY
       - name: Test release control regressions
         run: bash scripts/test-release-gate-freshness.sh
-      - name: Check required files
+      - name: Check required files and runtime defaults
         run: |
           test -f README.md
           test -f VERSION
@@ -69,6 +69,8 @@ jobs:
           test -f configs/models.json
           test -f configs/system.json
           test -f systemd/kingaid.service
+          grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' systemd/kingaid.service
+          grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=64$' systemd/kingaid.service
           test -f systemd/kingai-update-health.service
           test -f distro/overlay/usr/lib/systemd/system/kingai-health-scan.service
           test -f distro/overlay/usr/lib/systemd/system/kingai-health-scan.timer
@@ -109,6 +111,8 @@ jobs:
           export KINGAI_APPROVAL_ROOT="$tmp/approvals"
           export KINGAI_MEMORY_ROOT="$tmp/memory"
           export KINGAI_TASK_ROOT="$tmp/tasks"
+          export KINGAI_REQUIRE_EXECD=false
+          export KINGAI_TASK_RUN_BUDGET=64
           ./dist/kingaid >"$tmp/kingaid.log" 2>&1 &
           pid=$!
           cleanup() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
@@ -117,7 +121,10 @@ jobs:
           test -S "$KINGAI_SOCKET"; test -f "$KINGAI_PUBLIC_STATUS"
 
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/healthz > "$tmp/health.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/readyz > "$tmp/ready.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/status > "$tmp/status.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/model/status > "$tmp/model-status.json"
+          curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" http://kingai/v1/runtime/adapters > "$tmp/adapter-status.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"main","capability":"filesystem.read"}' http://kingai/v1/policy/evaluate > "$tmp/main-policy.json"
           curl --fail --silent --show-error --unix-socket "$KINGAI_SOCKET" -H 'Content-Type: application/json' -d '{"agent":"system-ops","capability":"service.restart"}' http://kingai/v1/policy/evaluate > "$tmp/spoof-policy.json"
 
@@ -152,17 +159,33 @@ jobs:
           export KINGAI_DIAGNOSTIC_ROOT="$diag"
           ./dist/kingai doctor --json > "$tmp/doctor.json"
           ./dist/kingai status --json > "$tmp/cli-status.json"
+          ./dist/kingai model status > "$tmp/cli-model-status.json"
+          ./dist/kingai runtime adapters > "$tmp/cli-adapter-status.json"
 
           python3 - "$tmp" <<'PY'
           import json, pathlib, sys
           root = pathlib.Path(sys.argv[1])
           assert json.loads((root/'health.json').read_text())['ok'] is True
+          ready = json.loads((root/'ready.json').read_text())
+          assert ready['ready'] is True and ready['status'] == 'ready', ready
+          components = {c['name']: c for c in ready['components']}
+          assert components['execution_broker']['status'] == 'not_required'
+          assert components['model_providers']['status'] == 'not_configured'
+          assert components['runtime_adapters']['status'] == 'not_configured'
+          assert components['audit_and_state']['ok'] is True
           status = json.loads((root/'status.json').read_text())
           assert status['name'] == 'KINGAI OS'
           assert status['architecture'] == 'D5-preview'
+          assert status['runtime_ready'] is True
+          assert status['runtime_health'] == 'ready'
+          assert status['task_run_budget'] == 64
           assert status['approval_broker'] == 'enabled'
           assert status['task_graph'] == 'enabled'
           assert status['memory_service'] == 'enabled'
+          assert json.loads((root/'model-status.json').read_text()) == []
+          assert json.loads((root/'adapter-status.json').read_text()) == []
+          assert json.loads((root/'cli-model-status.json').read_text()) == []
+          assert json.loads((root/'cli-adapter-status.json').read_text()) == []
           assert json.loads((root/'main-policy.json').read_text())['allowed'] is True
           spoof = json.loads((root/'spoof-policy.json').read_text())
           assert spoof['allowed'] is False and 'identity' in spoof['reason']
@@ -219,6 +242,8 @@ jobs:
           status=json.load(open('/tmp/kingai-container-status.json'))
           assert status['name']=='KINGAI OS'
           assert status['architecture']=='D5-preview'
+          assert status['runtime_ready'] is True
+          assert status['runtime_health']=='ready'
           memory=json.load(open('/tmp/kingai-container-memory.json'))
           assert memory['kind']=='task'
           task=json.load(open('/tmp/kingai-container-task.json'))
