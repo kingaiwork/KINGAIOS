@@ -20,9 +20,10 @@ run_case() {
   bash "$ROOT/desktop/intelligence/launch.sh" "$@"
   mapfile -t args < "$KINGAI_TEST_CAPTURE"
   [[ "${args[0]:-}" == "/usr/share/kingai/desktop/intelligence/Main.qml" ]]
-  [[ "${args[1]:-}" == "--center" ]]
-  [[ "${args[2]:-}" == "$expected" ]] || {
-    printf 'expected center %s, got %s\n' "$expected" "${args[2]:-<missing>}" >&2
+  [[ "${args[1]:-}" == "--" ]]
+  [[ "${args[2]:-}" == "--center" ]]
+  [[ "${args[3]:-}" == "$expected" ]] || {
+    printf 'expected center %s, got %s\n' "$expected" "${args[3]:-<missing>}" >&2
     exit 1
   }
 }
