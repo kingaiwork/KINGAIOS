@@ -10,6 +10,7 @@ for f in \
   release/gates.json \
   .github/workflows/release.yml \
   .github/workflows/stability-security-crosscheck.yml \
+  .github/workflows/codeql.yml \
   scripts/check-release-gate-freshness.sh \
   scripts/build-live-iso.sh \
   systemd/kingaid.service \
@@ -47,6 +48,15 @@ if g['production_signing_ready'] and not g['tuf_repository']:
     raise SystemExit('cross-check: production signing cannot be ready before production TUF repository')
 if g['r2_delivery'] and not g['production_signing_ready']:
     raise SystemExit('cross-check: production delivery cannot precede production signing readiness')
+
+# CodeQL tracing must initialize only after the exact Go toolchain is installed.
+codeql = Path('.github/workflows/codeql.yml').read_text()
+setup = codeql.find('actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e')
+init = codeql.find('github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd')
+build = codeql.find('go build ./...')
+analyze = codeql.find('github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd')
+if min(setup, init, build, analyze) < 0 or not (setup < init < build < analyze):
+    raise SystemExit('cross-check: CodeQL must run setup-go -> init -> traced build -> analyze')
 PY
 
 # Core daemon: non-root, no TCP/IP address families, no privilege gain.
@@ -96,15 +106,24 @@ contains .github/workflows/release.yml 'Reject stale verification evidence'
 contains scripts/check-release-gate-freshness.sh "require_fresh stability-security 'stability-security-crosscheck.yml'"
 contains scripts/check-release-gate-freshness.sh "'^(cmd/|internal/|configs/|container/|systemd/|scripts/|release/|\\.github/workflows/|go\\.(mod|sum)$)'"
 
-# Critical release-chain Actions must be immutable rather than movable major tags.
+# Critical release/security-chain Actions must be immutable rather than movable major tags.
 contains .github/workflows/release.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
 contains .github/workflows/release.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
 contains .github/workflows/stability-security-crosscheck.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
 contains .github/workflows/stability-security-crosscheck.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+contains .github/workflows/codeql.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
+contains .github/workflows/codeql.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+contains .github/workflows/codeql.yml 'github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd'
+contains .github/workflows/codeql.yml 'github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd'
+contains .github/workflows/codeql.yml 'build-mode: manual'
 not_contains .github/workflows/release.yml 'actions/checkout@v6'
 not_contains .github/workflows/release.yml 'actions/setup-go@v7'
 not_contains .github/workflows/stability-security-crosscheck.yml 'actions/checkout@v6'
 not_contains .github/workflows/stability-security-crosscheck.yml 'actions/setup-go@v7'
+not_contains .github/workflows/codeql.yml 'actions/checkout@v6'
+not_contains .github/workflows/codeql.yml 'actions/setup-go@v7'
+not_contains .github/workflows/codeql.yml 'github/codeql-action/init@v4'
+not_contains .github/workflows/codeql.yml 'github/codeql-action/analyze@v4'
 
 # Installable profiles must remain explicit and production Secure Boot must stay false
 # until the production signing chain is implemented and proven.
