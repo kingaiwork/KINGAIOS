@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily KINGAI OS Sentinel Threat Intelligence Refresh
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=24h
+RandomizedDelaySec=20min
+Persistent=true
+Unit=kingai-threat-intel.service
+
+[Install]
+WantedBy=timers.target

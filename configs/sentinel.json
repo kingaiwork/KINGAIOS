@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "edition": "KINGAI OS Sentinel",
+  "mode": "defensive",
+  "dashboard": {
+    "bind": "127.0.0.1:9443",
+    "remote_access": "ssh-tunnel-or-authenticated-reverse-proxy",
+    "read_only": true
+  },
+  "authorization": {
+    "active_testing": "authorized-assets-only",
+    "default": "deny",
+    "scope_file": "/etc/kingai/sentinel-scope.json",
+    "max_scope_ttl_hours": 24,
+    "unknown_targets": "deny",
+    "privileged_actions": "approval-required",
+    "require_audit": true
+  },
+  "execution": {
+    "default": "rootless-container",
+    "network": "scope-restricted",
+    "filesystem": "ephemeral-workspace",
+    "secrets": "never-in-task-output"
+  },
+  "intelligence": {
+    "feed_registry": "/usr/share/kingai/sentinel/feeds/feeds.json",
+    "refresh_interval": "24h",
+    "local_store": "/var/lib/kingai/sentinel/feeds",
+    "prioritization": ["CISA_KEV", "EPSS", "NVD", "asset_context"]
+  },
+  "ai": {
+    "runtime": "kingaid",
+    "tasks": ["triage", "correlate", "summarize", "prioritize", "recommend-mitigation"],
+    "autonomous_changes": false,
+    "approval_for_changes": true
+  }
+}

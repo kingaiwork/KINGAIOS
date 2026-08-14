@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "feeds": [
+    {
+      "id": "cisa-kev",
+      "name": "CISA Known Exploited Vulnerabilities",
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+      "format": "json",
+      "priority": "critical",
+      "refresh": "24h"
+    },
+    {
+      "id": "first-epss",
+      "name": "FIRST EPSS Current Scores",
+      "url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+      "format": "csv.gz",
+      "priority": "high",
+      "refresh": "24h"
+    },
+    {
+      "id": "nvd-kev",
+      "name": "NVD CVE API - KEV subset",
+      "url": "https://services.nvd.nist.gov/rest/json/cves/2.0?hasKev&resultsPerPage=2000",
+      "format": "json",
+      "priority": "high",
+      "refresh": "24h"
+    }
+  ]
+}
