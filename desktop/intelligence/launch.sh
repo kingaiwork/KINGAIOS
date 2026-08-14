@@ -35,4 +35,6 @@ case "$center" in
   *) center="home" ;;
 esac
 
-exec "$qml_bin" /usr/share/kingai/desktop/intelligence/Main.qml --center "$center"
+# Qt's qml runtime reserves its own options. The explicit `--` separator keeps
+# KINGAI center arguments in Application.arguments instead of qml's parser.
+exec "$qml_bin" /usr/share/kingai/desktop/intelligence/Main.qml -- --center "$center"
