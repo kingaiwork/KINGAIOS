@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "kingai-intelligence",
+  "name": "KINGAI Intelligence",
+  "description": "AI-first workspace centered on agents, tasks, memory, knowledge, models and automation.",
+  "theme": "org.kingai.intelligence",
+  "layout": "kingai-intelligence.js",
+  "mode": "ai-first",
+  "default": true,
+  "primary_surfaces": [
+    "agents",
+    "tasks",
+    "approvals",
+    "memory",
+    "knowledge",
+    "models",
+    "automation"
+  ]
+}
