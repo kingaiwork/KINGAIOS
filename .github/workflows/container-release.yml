@@ -1,0 +1,317 @@
+name: KINGAI OS Container Release
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/container-release.yml
+      - .release/container-beta.json
+      - .release/container-rc.json
+      - release/gates.json
+      - container/**
+      - profiles/container.yaml
+      - scripts/test-container-release-policy.sh
+      - scripts/verify-container-release.sh
+  push:
+    branches:
+      - main
+    paths:
+      - .release/container-beta.json
+      - .release/container-rc.json
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Container version, for example 0.1.0-beta.1
+        required: true
+        default: 0.1.0-beta.1
+        type: string
+      channel:
+        description: Release channel
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - rc
+          - stable
+
+concurrency:
+  group: kingai-container-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate release request and policy regressions
+        run: |
+          bash -n scripts/*.sh
+          bash scripts/test-container-release-policy.sh
+          python3 -m py_compile scripts/validate-oci-archive.py
+      - name: Confirm release remains fail-closed before publication
+        run: |
+          python3 - <<'PY'
+          import json
+          gates = json.load(open('release/gates.json', encoding='utf-8'))
+          assert gates['container_release_pipeline'] is True
+          assert gates['container_signed_release'] is False
+          assert gates['production_signing_ready'] is False
+          PY
+
+  release:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/kingaiwork/kingai-os
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate release identity
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            changed=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
+            if grep -qx '.release/container-beta.json' <<<"$changed"; then
+              request=.release/container-beta.json
+            elif grep -qx '.release/container-rc.json' <<<"$changed"; then
+              request=.release/container-rc.json
+            else
+              echo "container release push did not change a recognized request file" >&2
+              exit 2
+            fi
+            version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$request")
+            channel=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["channel"])' "$request")
+          else
+            test "$GITHUB_REF" = "refs/heads/main" || { echo "manual releases must run from main" >&2; exit 2; }
+            version='${{ inputs.version }}'
+            channel='${{ inputs.channel }}'
+          fi
+
+          case "$channel" in
+            beta) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] ;;
+            rc) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] ;;
+            stable) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+            *) echo "invalid channel: $channel" >&2; exit 2 ;;
+          esac || { echo "channel/version mismatch: $channel / $version" >&2; exit 2; }
+
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "release commit must be contained in main" >&2
+            exit 2
+          }
+
+          python3 - "$channel" <<'PY'
+          import json, sys
+          gates = json.load(open('release/gates.json', encoding='utf-8'))
+          channel = sys.argv[1]
+          required = [
+              'container_image_ci',
+              'container_multiarch_ci',
+              'container_security_scan_ci',
+              'container_oci_archive_ci',
+              'container_release_pipeline',
+          ]
+          missing = [key for key in required if gates.get(key) is not True]
+          if missing:
+              raise SystemExit('container release gates incomplete: ' + ', '.join(missing))
+          if channel == 'stable' and gates.get('production_signing_ready') is not True:
+              raise SystemExit('stable release blocked: production_signing_ready=false')
+          PY
+
+          tags="$IMAGE:$version"
+          case "$channel" in
+            beta) tags="$tags $IMAGE:beta" ;;
+            rc) tags="$tags $IMAGE:rc" ;;
+            stable) tags="$tags $IMAGE:stable $IMAGE:latest" ;;
+          esac
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build amd64 preflight image
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/amd64 \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --tag kingai-os:release-scan-amd64 \
+            --load \
+            .
+
+      - name: Scan amd64 preflight image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: kingai-os:release-scan-amd64
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+      - name: Build arm64 preflight image
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/arm64 \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --tag kingai-os:release-scan-arm64 \
+            --load \
+            .
+
+      - name: Scan arm64 preflight image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: kingai-os:release-scan-arm64
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          skip-setup-trivy: true
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push multi-architecture image
+        id: push
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAGS: ${{ steps.release.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          for tag in $TAGS; do args+=(--tag "$tag"); done
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --provenance=true \
+            --sbom=true \
+            --metadata-file /tmp/kingai-container-metadata.json \
+            --push \
+            "${args[@]}" \
+            .
+          digest=$(jq -r '."containerimage.digest"' /tmp/kingai-container-metadata.json)
+          [[ "$digest" == sha256:* ]] || { echo "missing pushed image digest" >&2; cat /tmp/kingai-container-metadata.json >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          docker buildx imagetools inspect "$IMAGE@$digest"
+
+      - name: Generate CycloneDX SBOM evidence
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.push.outputs.image_ref }}
+          format: cyclonedx
+          output: kingai-os.cdx.json
+          exit-code: '0'
+          skip-setup-trivy: true
+
+      - name: Generate GitHub build provenance
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest CycloneDX SBOM
+        uses: actions/attest@v4.2.1
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: kingai-os.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Keyless-sign image digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+      - name: Verify release signature
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@${GITHUB_REF}"
+          cosign verify \
+            --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE@$DIGEST"
+
+      - name: Write release metadata and checksums
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mv kingai-os.cdx.json "dist/kingai-os-${VERSION}.cdx.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          version = os.environ['VERSION']
+          data = {
+              'schema': 1,
+              'product': 'KINGAI OS Container',
+              'version': version,
+              'channel': os.environ['CHANNEL'],
+              'image': os.environ['IMAGE'],
+              'digest': os.environ['DIGEST'],
+              'platforms': ['linux/amd64', 'linux/arm64'],
+              'source_repository': os.environ['GITHUB_REPOSITORY'],
+              'source_revision': os.environ['GITHUB_SHA'],
+              'management_transport': 'unix-socket-only',
+              'runtime_user': '_kingai',
+              'runtime_uid': 10001,
+              'runtime_gid': 10001,
+              'persistent_paths': ['/var/lib/kingai', '/var/log/kingai'],
+              'buildkit_sbom': True,
+              'buildkit_provenance': True,
+              'sbom': f'kingai-os-{version}.cdx.json',
+              'provenance': 'github-artifact-attestation',
+              'signature': 'sigstore-keyless-cosign',
+          }
+          Path(f'dist/kingai-os-{version}.release.json').write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+          PY
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-os-container-${{ steps.release.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90

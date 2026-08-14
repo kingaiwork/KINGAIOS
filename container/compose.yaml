@@ -5,6 +5,7 @@ services:
       dockerfile: container/Dockerfile
     image: kingai-os:dev
     restart: unless-stopped
+    user: "10001:10001"
     volumes:
       - kingai-state:/var/lib/kingai
       - kingai-logs:/var/log/kingai
@@ -13,9 +14,11 @@ services:
     cap_drop:
       - ALL
     read_only: true
+    pids_limit: 256
+    stop_grace_period: 15s
     tmpfs:
-      - /run/kingai:mode=1777
-      - /tmp:mode=1777
+      - /run/kingai:rw,nosuid,nodev,noexec,mode=0750,uid=10001,gid=10001
+      - /tmp:rw,nosuid,nodev,noexec,mode=1777
 
 volumes:
   kingai-state:

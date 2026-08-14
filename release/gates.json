@@ -3,6 +3,10 @@
   "d5_runtime_ci": true,
   "container_image_ci": true,
   "container_multiarch_ci": true,
+  "container_security_scan_ci": true,
+  "container_oci_archive_ci": true,
+  "container_release_pipeline": true,
+  "container_signed_release": false,
   "installer_vm": true,
   "installable_live_iso_vm": true,
   "desktop_live_vm": true,
@@ -17,5 +21,5 @@
   "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container amd64 runtime and linux/amd64 + linux/arm64 Buildx verification are successful. Server/Desktop boot foundations, direct installer VM, exact Server Live ISO -> embedded squashfs -> disposable GPT/EFI/A-B/LUKS disk -> installed UEFI boot, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill are verified. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
+  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container runtime smoke covers fixed non-root UID/GID, PID 1 kingaid, no management TCP listener, Policy/Approval/Task/Memory/Model/Audit surfaces and persistent Memory/Task state. Container CI additionally gates fixable CRITICAL vulnerabilities and validates linux/amd64 + linux/arm64 OCI output. A beta/RC GHCR release pipeline now generates BuildKit SBOM/provenance, CycloneDX SBOM, GitHub attestations and Sigstore/Cosign keyless signatures with verification. No signed Container Beta has been published yet, and stable releases remain blocked while production_signing_ready=false. Server/Desktop boot foundations, installer, Recovery, Secure Boot, pinned-root TUF HTTPS tamper rejection and A/B rollback evidence remain verified; production TUF repository keys, branch governance, production signing and Cloudflare delivery remain protected gates."
 }
