@@ -4,7 +4,7 @@ import "testing"
 
 func validManifest() Manifest {
 	return Manifest{
-		Schema: 1,
+		Schema: SchemaVersion,
 		ID: "kingai.generic-uefi-arm64",
 		Name: "KINGAI Generic UEFI ARM64",
 		Version: "0.1.0",
