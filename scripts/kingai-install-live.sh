@@ -18,7 +18,8 @@ usage: kingai-install [--list] --target /dev/DEVICE [--profile server|desktop]
 
 Installs KINGAI OS from the read-only squashfs embedded in the live ISO.
 The target disk is erased and provisioned with EFI + A/B roots + encrypted STATE.
-Without --state-key, a STATE unlock passphrase is requested securely from /dev/tty.
+Without --state-key, a STATE unlock passphrase of at least 32 characters is
+requested securely from /dev/tty. A long unique passphrase is strongly recommended.
 EOF
 }
 
@@ -88,13 +89,13 @@ if [[ -z "$STATE_KEY" ]]; then
   [[ -r /dev/tty ]] || { echo "interactive passphrase entry requires /dev/tty" >&2; exit 1; }
   generated_key=$(mktemp "$runtime_dir/state-key.XXXXXX")
   chmod 0600 "$generated_key"
-  printf 'Create STATE unlock passphrase (12+ characters): ' >/dev/tty
+  printf 'Create STATE unlock passphrase (32+ characters): ' >/dev/tty
   IFS= read -r -s pass1 </dev/tty
   printf '\nRepeat STATE unlock passphrase: ' >/dev/tty
   IFS= read -r -s pass2 </dev/tty
   printf '\n' >/dev/tty
   [[ "$pass1" == "$pass2" ]] || { echo "passphrases do not match" >&2; exit 1; }
-  (( ${#pass1} >= 12 )) || { echo "STATE passphrase must be at least 12 characters" >&2; exit 1; }
+  (( ${#pass1} >= 32 )) || { echo "STATE passphrase must be at least 32 characters" >&2; exit 1; }
   printf '%s' "$pass1" > "$generated_key"
   unset pass1 pass2
   STATE_KEY="$generated_key"
