@@ -49,7 +49,13 @@ docker volume create "$state_volume" >/dev/null
 docker volume create "$log_volume" >/dev/null
 
 start_container() {
+  local platform_args=()
+  if [[ -n "$platform" ]]; then
+    platform_args=(--platform "$platform")
+  fi
+
   docker run -d \
+    "${platform_args[@]}" \
     --name "$name" \
     --read-only \
     --security-opt no-new-privileges=true \
