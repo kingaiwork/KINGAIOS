@@ -2,6 +2,6 @@
   "profile": "server",
   "channel": "beta",
   "requested_at": "2026-08-14",
-  "attempt": 2,
-  "reason": "Publish cleanly versioned installable Server Beta after release-channel artifact identity, exact Live ISO install UEFI proof, A-B update, Recovery rollback and fresh TUF evidence"
+  "attempt": 3,
+  "reason": "Security rebuild with Go 1.25.13 after govulncheck eliminated reachable standard-library vulnerabilities; fresh Installer, exact Live ISO, A-B rollback, Recovery, TUF, CodeQL and cross-component evidence"
 }
