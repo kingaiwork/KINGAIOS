@@ -1,7 +1,7 @@
 {
   "profile": "server",
   "channel": "dev",
-  "requested_at": "2026-08-12",
-  "attempt": 2,
-  "reason": "Retry first clean QEMU-boot-verified KINGAI OS Server Developer Preview after isolating optional R2 tooling"
+  "requested_at": "2026-08-14",
+  "attempt": 3,
+  "reason": "Build a fresh QEMU-verified KINGAI OS Server Developer Preview after Device Pack v2 and Server RootFS SBOM CI fixes"
 }
