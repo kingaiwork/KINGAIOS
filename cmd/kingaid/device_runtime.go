@@ -33,15 +33,11 @@ func init() {
 	deviceID := "unprovisioned"
 	deviceClass := "unprovisioned"
 	if identity, err := deviceidentity.LoadTrusted(identityPath); err == nil {
-		if boardID != "" && boardID != identity.BoardID {
-			log.Fatalf("device identity board_id %q conflicts with KINGAI_DEVICE_BOARD_ID %q", identity.BoardID, boardID)
-		}
+		if boardID != "" && boardID != identity.BoardID { log.Fatalf("device identity board_id %q conflicts with KINGAI_DEVICE_BOARD_ID %q", identity.BoardID, boardID) }
 		boardID = identity.BoardID
 		deviceID = identity.DeviceID
 		deviceClass = identity.Class
-	} else if !errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("device identity initialization failed: %v", err)
-	}
+	} else if !errors.Is(err, os.ErrNotExist) { log.Fatalf("device identity initialization failed: %v", err) }
 	timeout := time.Duration(getenvInt("KINGAI_DEVICE_HANDLER_TIMEOUT_SECONDS", 20, 1, 120)) * time.Second
 
 	runtime, err := devicepack.LoadVerifiedRuntime(manifestDir, artifactRoot, trustDir, handlerRoot, boardID, timeout)
@@ -56,9 +52,7 @@ func init() {
 	if err := policy.SetRuntimeRules(rules); err != nil { log.Fatalf("device runtime policy registration failed: %v", err) }
 
 	brokerSocket := getenv("KINGAI_DEVICE_BROKER_SOCKET", "/run/kingai/device-broker.sock")
-	if !filepath.IsAbs(brokerSocket) || filepath.Clean(brokerSocket) != brokerSocket || filepath.Dir(brokerSocket) != "/run/kingai" || strings.ContainsAny(brokerSocket, "\x00\n\r") {
-		log.Fatal("device broker socket must be a clean absolute path directly under /run/kingai")
-	}
+	if !filepath.IsAbs(brokerSocket) || filepath.Clean(brokerSocket) != brokerSocket || filepath.Dir(brokerSocket) != "/run/kingai" || strings.ContainsAny(brokerSocket, "\x00\n\r") { log.Fatal("device broker socket must be a clean absolute path directly under /run/kingai") }
 	if err := os.Setenv("KINGAI_EXECD_SOCKET", brokerSocket); err != nil { log.Fatalf("set device broker execution socket: %v", err) }
 	if err := os.Remove(brokerSocket); err != nil && !errors.Is(err, os.ErrNotExist) { log.Fatalf("remove stale device broker socket: %v", err) }
 	listener, err := net.Listen("unix", brokerSocket)
@@ -68,10 +62,14 @@ func init() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-		writeDeviceJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "service": "kingai-device-broker", "verification": "ed25519+sha256",
+		healthErr := runtime.Health(r.Context())
+		status := http.StatusOK
+		message := ""
+		if healthErr != nil { status = http.StatusServiceUnavailable; message = healthErr.Error() }
+		writeDeviceJSON(w, status, map[string]any{
+			"ok": healthErr == nil, "service": "kingai-device-broker", "verification": "ed25519+sha256",
 			"device_id": deviceID, "device_class": deviceClass, "board_id": boardID,
-			"device_packs": len(runtime.PackIDs()), "capabilities": len(runtime.Capabilities()),
+			"device_packs": len(runtime.PackIDs()), "capabilities": len(runtime.Capabilities()), "message": message,
 		})
 	})
 	mux.HandleFunc("/v1/execute", func(w http.ResponseWriter, r *http.Request) {
