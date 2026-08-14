@@ -14,33 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
+	"github.com/kingaiwork/KINGAIOS/internal/desktopbridge"
 )
 
 var version = "0.1.0-dev"
-
-const snapshotSchema = 1
-
-type privateTask struct {
-	ID          string           `json:"id"`
-	Goal        string           `json:"goal"`
-	Agent       string           `json:"agent"`
-	Status      taskgraph.Status `json:"status"`
-	StepCount   int              `json:"step_count"`
-	DoneSteps   int              `json:"done_steps"`
-	FailedSteps int              `json:"failed_steps"`
-	CreatedAt   time.Time        `json:"created_at"`
-	UpdatedAt   time.Time        `json:"updated_at"`
-}
-
-type privateSnapshot struct {
-	Schema    int           `json:"schema"`
-	Product   string        `json:"product"`
-	Version   string        `json:"version"`
-	UserUID   uint32        `json:"user_uid"`
-	Tasks     []privateTask `json:"tasks"`
-	UpdatedAt time.Time     `json:"updated_at"`
-}
 
 func main() {
 	if len(os.Args) > 1 {
@@ -98,56 +75,20 @@ func runOnce() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
 	defer cancel()
 
-	var tasks []taskgraph.Task
-	if err := getJSON(ctx, client, "/v1/tasks/list", &tasks); err != nil {
-		return fmt.Errorf("fetch private tasks: %w", err)
+	var snapshot desktopbridge.Snapshot
+	if err := getJSON(ctx, client, "/v1/desktop/private", &snapshot); err != nil {
+		return fmt.Errorf("fetch private desktop snapshot: %w", err)
 	}
-
-	snapshot := privateSnapshot{
-		Schema:    snapshotSchema,
-		Product:   "KINGAI OS Desktop",
-		Version:   version,
-		UserUID:   uint32(os.Geteuid()),
-		Tasks:     sanitizeTasks(tasks),
-		UpdatedAt: time.Now().UTC(),
+	if snapshot.Schema != desktopbridge.Schema || snapshot.Product != "KINGAI OS Desktop" {
+		return errors.New("kingaid returned an incompatible desktop snapshot")
+	}
+	if snapshot.UserUID != uint32(os.Geteuid()) {
+		return fmt.Errorf("desktop snapshot uid %d does not match bridge uid %d", snapshot.UserUID, os.Geteuid())
+	}
+	if snapshot.UpdatedAt.IsZero() {
+		return errors.New("kingaid returned a desktop snapshot without a timestamp")
 	}
 	return writePrivateSnapshot(output, snapshot)
-}
-
-func sanitizeTasks(tasks []taskgraph.Task) []privateTask {
-	out := make([]privateTask, 0, len(tasks))
-	for _, task := range tasks {
-		item := privateTask{
-			ID:        truncateText(strings.TrimSpace(task.ID), 96),
-			Goal:      truncateText(strings.TrimSpace(task.Goal), 512),
-			Agent:     truncateText(strings.TrimSpace(task.Agent), 64),
-			Status:    task.Status,
-			StepCount: len(task.Steps),
-			CreatedAt: task.CreatedAt,
-			UpdatedAt: task.UpdatedAt,
-		}
-		for _, step := range task.Steps {
-			switch step.Status {
-			case taskgraph.StatusCompleted:
-				item.DoneSteps++
-			case taskgraph.StatusFailed, taskgraph.StatusBlocked:
-				item.FailedSteps++
-			}
-		}
-		out = append(out, item)
-	}
-	return out
-}
-
-func truncateText(value string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return ""
-	}
-	runes := []rune(value)
-	if len(runes) <= maxRunes {
-		return value
-	}
-	return string(runes[:maxRunes]) + "…"
 }
 
 func privateSnapshotPath() (string, error) {
@@ -192,7 +133,7 @@ func validateRuntimeDir(path string) error {
 	return nil
 }
 
-func writePrivateSnapshot(path string, snapshot privateSnapshot) error {
+func writePrivateSnapshot(path string, snapshot desktopbridge.Snapshot) error {
 	b, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return err
