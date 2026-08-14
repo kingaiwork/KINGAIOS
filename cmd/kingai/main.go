@@ -17,6 +17,7 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/approval"
 	"github.com/kingaiwork/KINGAIOS/internal/desktop"
 	"github.com/kingaiwork/KINGAIOS/internal/diagnostics"
+	"github.com/kingaiwork/KINGAIOS/internal/executor"
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/model"
 	"github.com/kingaiwork/KINGAIOS/internal/policy"
@@ -37,6 +38,7 @@ Usage:
   kingai approval list
   kingai approval approve <id>
   kingai approval deny <id>
+  kingai execution run <agent> <capability> <target> [approval-id]
   kingai memory put <kind> <json>
   kingai memory list
   kingai memory delete <id>
@@ -44,6 +46,7 @@ Usage:
   kingai task create <agent> <goal...>
   kingai task list
   kingai task transition <id> <status>
+  kingai task step <id> <step-id> <status>
   kingai desktop list
   kingai desktop show
   kingai desktop set <kingai-intelligence|kingai-flow|kingai-classic>
@@ -54,26 +57,17 @@ Usage:
 func main() {
 	if len(os.Args) < 2 { usage(); return }
 	switch os.Args[1] {
-	case "version":
-		fmt.Printf("KINGAI OS %s\n", version)
-	case "status":
-		status(os.Args[2:])
-	case "doctor":
-		doctor(os.Args[2:])
-	case "policy":
-		policyCmd(os.Args[2:])
-	case "approval":
-		approvalCmd(os.Args[2:])
-	case "memory":
-		memoryCmd(os.Args[2:])
-	case "model":
-		modelCmd(os.Args[2:])
-	case "task":
-		taskCmd(os.Args[2:])
-	case "desktop":
-		desktopCmd(os.Args[2:])
-	default:
-		usage(); os.Exit(2)
+	case "version": fmt.Printf("KINGAI OS %s\n", version)
+	case "status": status(os.Args[2:])
+	case "doctor": doctor(os.Args[2:])
+	case "policy": policyCmd(os.Args[2:])
+	case "approval": approvalCmd(os.Args[2:])
+	case "execution": executionCmd(os.Args[2:])
+	case "memory": memoryCmd(os.Args[2:])
+	case "model": modelCmd(os.Args[2:])
+	case "task": taskCmd(os.Args[2:])
+	case "desktop": desktopCmd(os.Args[2:])
+	default: usage(); os.Exit(2)
 	}
 }
 
@@ -81,7 +75,7 @@ func status(args []string) {
 	var remote map[string]any
 	if err := daemonJSON(http.MethodGet, "/v1/status", nil, &remote); err == nil {
 		if len(args) > 0 && strings.EqualFold(args[0], "--json") { _ = json.NewEncoder(os.Stdout).Encode(remote); return }
-		fmt.Printf("System:       %v\nVersion:      %v\nArchitecture: %v\nPolicy:       %v\n", remote["name"], remote["version"], remote["architecture"], remote["policy"])
+		fmt.Printf("System:       %v\nVersion:      %v\nArchitecture: %v\nPolicy:       %v\nExecution:    %v\n", remote["name"], remote["version"], remote["architecture"], remote["policy"], remote["execution_broker"])
 		return
 	}
 	fallback := map[string]any{"name":"KINGAI OS","version":version,"channel":"dev","platform":runtime.GOOS+"/"+runtime.GOARCH,"daemon":"offline"}
@@ -92,9 +86,7 @@ func status(args []string) {
 func doctor(args []string) {
 	jsonMode := false
 	repairSafe := false
-	for _, arg := range args {
-		switch arg { case "--json": jsonMode = true; case "--repair-safe": repairSafe = true; default: usage(); os.Exit(2) }
-	}
+	for _, arg := range args { switch arg { case "--json": jsonMode = true; case "--repair-safe": repairSafe = true; default: usage(); os.Exit(2) } }
 	if repairSafe && os.Geteuid() != 0 { fmt.Fprintln(os.Stderr, "kingai doctor --repair-safe requires root; diagnostic-only doctor does not"); os.Exit(5) }
 	root := os.Getenv("KINGAI_DIAGNOSTIC_ROOT")
 	var health map[string]any
@@ -148,9 +140,17 @@ func approvalCmd(args []string) {
 		var out approval.Request
 		if err := daemonJSON(http.MethodPost, "/v1/approval/decision", map[string]any{"id": args[1], "action": args[0]}, &out); err != nil { fail(err) }
 		printJSON(out)
-	default:
-		usage(); os.Exit(2)
+	default: usage(); os.Exit(2)
 	}
+}
+
+func executionCmd(args []string) {
+	if len(args) < 4 || args[0] != "run" { usage(); os.Exit(2) }
+	body := map[string]any{"agent": args[1], "capability": args[2], "target": args[3]}
+	if len(args) > 4 { body["approval_id"] = args[4] }
+	var out executor.Result
+	if err := daemonJSONWithTimeout(http.MethodPost, "/v1/execution/run", body, &out, 40*time.Second); err != nil { fail(err) }
+	printJSON(out)
 }
 
 func memoryCmd(args []string) {
@@ -171,8 +171,7 @@ func memoryCmd(args []string) {
 		var out map[string]any
 		if err := daemonJSON(http.MethodPost, "/v1/memory/delete", map[string]any{"id": args[1]}, &out); err != nil { fail(err) }
 		printJSON(out)
-	default:
-		usage(); os.Exit(2)
+	default: usage(); os.Exit(2)
 	}
 }
 
@@ -200,20 +199,23 @@ func taskCmd(args []string) {
 		printJSON(out)
 	case "transition":
 		if len(args) != 3 { usage(); os.Exit(2) }
-		body := map[string]any{"id": args[1], "status": args[2]}
 		var out taskgraph.Task
-		if err := daemonJSON(http.MethodPost, "/v1/tasks/transition", body, &out); err != nil { fail(err) }
+		if err := daemonJSON(http.MethodPost, "/v1/tasks/transition", map[string]any{"id": args[1], "status": args[2]}, &out); err != nil { fail(err) }
 		printJSON(out)
-	default:
-		usage(); os.Exit(2)
+	case "step":
+		if len(args) != 4 { usage(); os.Exit(2) }
+		var out taskgraph.Task
+		body := map[string]any{"id": args[1], "step_id": args[2], "status": args[3]}
+		if err := daemonJSON(http.MethodPost, "/v1/tasks/step/transition", body, &out); err != nil { fail(err) }
+		printJSON(out)
+	default: usage(); os.Exit(2)
 	}
 }
 
 func desktopCmd(args []string) {
 	if len(args) < 1 { usage(); os.Exit(2) }
 	switch args[0] {
-	case "list":
-		for _, e := range desktop.List() { fmt.Printf("%s\t%s\n", e.ID, e.Name) }
+	case "list": for _, e := range desktop.List() { fmt.Printf("%s\t%s\n", e.ID, e.Name) }
 	case "show":
 		v, err := desktop.Current(); if err != nil { fail(err) }
 		if v == "" { fmt.Println("unselected") } else { fmt.Println(v) }
@@ -224,20 +226,20 @@ func desktopCmd(args []string) {
 	case "apply":
 		if err := desktop.ApplyCurrent(); err != nil { fail(err) }
 		fmt.Println("desktop experience applied")
-	default:
-		usage(); os.Exit(2)
+	default: usage(); os.Exit(2)
 	}
 }
 
 func printJSON(v any) { enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  "); _ = enc.Encode(v) }
 func fail(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+func daemonJSON(method, path string, body any, out any) error { return daemonJSONWithTimeout(method, path, body, out, 2*time.Second) }
 
-func daemonJSON(method, path string, body any, out any) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second); defer cancel()
+func daemonJSONWithTimeout(method, path string, body any, out any, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout); defer cancel()
 	socketPath := os.Getenv("KINGAI_SOCKET"); if socketPath == "" { socketPath = "/run/kingai/kingaid.sock" }
 	if !filepath.IsAbs(socketPath) || strings.ContainsAny(socketPath, "\x00\n\r") { return fmt.Errorf("KINGAI_SOCKET must be an absolute local unix-socket path") }
 	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) { return (&net.Dialer{}).DialContext(ctx, "unix", socketPath) }}; defer tr.CloseIdleConnections()
-	client := &http.Client{Transport: tr, Timeout: 2*time.Second}
+	client := &http.Client{Transport: tr, Timeout: timeout}
 	var reader io.Reader
 	if body != nil { b, err := json.Marshal(body); if err != nil { return err }; reader = bytes.NewReader(b) }
 	req, err := http.NewRequestWithContext(ctx, method, "http://kingai"+path, reader); if err != nil { return err }
