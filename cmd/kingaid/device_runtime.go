@@ -19,18 +19,20 @@ import (
 // IoT uses an in-process, non-privileged Device Broker that speaks the same
 // constrained AF_UNIX execution protocol as the regular execution client. It
 // does not execute shell commands and it never opens hardware devices itself;
-// exact device.* capabilities are forwarded only to Device Pack handlers.
+// exact device.* capabilities are forwarded only to verified Device Pack handlers.
 func init() {
 	if !getenvBool("KINGAI_DEVICE_RUNTIME_ENABLED", false) {
 		return
 	}
 
 	manifestDir := getenv("KINGAI_DEVICE_PACK_DIR", "/etc/kingai/device-packs")
+	artifactRoot := getenv("KINGAI_DEVICE_ARTIFACT_ROOT", "/usr/lib/kingai/device-packs")
+	trustDir := getenv("KINGAI_DEVICE_TRUST_DIR", "/etc/kingai/trust/device-pack-keys")
 	handlerRoot := getenv("KINGAI_DEVICE_HANDLER_ROOT", "/run/kingai-device")
 	boardID := strings.TrimSpace(os.Getenv("KINGAI_DEVICE_BOARD_ID"))
 	timeout := time.Duration(getenvInt("KINGAI_DEVICE_HANDLER_TIMEOUT_SECONDS", 20, 1, 120)) * time.Second
 
-	runtime, err := devicepack.LoadRuntime(manifestDir, handlerRoot, boardID, timeout)
+	runtime, err := devicepack.LoadVerifiedRuntime(manifestDir, artifactRoot, trustDir, handlerRoot, boardID, timeout)
 	if err != nil {
 		log.Fatalf("device runtime initialization failed: %v", err)
 	}
@@ -75,10 +77,11 @@ func init() {
 			return
 		}
 		writeDeviceJSON(w, http.StatusOK, map[string]any{
-			"ok":           true,
-			"service":      "kingai-device-broker",
-			"device_packs": len(runtime.PackIDs()),
-			"capabilities": len(runtime.Capabilities()),
+			"ok":            true,
+			"service":       "kingai-device-broker",
+			"verification":  "ed25519+sha256",
+			"device_packs":  len(runtime.PackIDs()),
+			"capabilities":  len(runtime.Capabilities()),
 		})
 	})
 	mux.HandleFunc("/v1/execute", func(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +124,7 @@ func init() {
 			log.Fatalf("device broker serve: %v", err)
 		}
 	}()
-	log.Printf("KINGAI IoT Device Broker enabled: packs=%d capabilities=%d", len(runtime.PackIDs()), len(runtime.Capabilities()))
+	log.Printf("KINGAI IoT Device Broker enabled: packs=%d capabilities=%d verification=ed25519+sha256", len(runtime.PackIDs()), len(runtime.Capabilities()))
 }
 
 func deviceRiskLevel(risk string) policy.RiskLevel {

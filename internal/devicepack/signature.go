@@ -51,21 +51,9 @@ func VerifyDetachedSignature(manifestPath, signaturePath, keyDir string) error {
 	if err != nil {
 		return err
 	}
-	dec := json.NewDecoder(strings.NewReader(string(signatureBytes)))
-	dec.DisallowUnknownFields()
-	var envelope DetachedSignature
-	if err := dec.Decode(&envelope); err != nil {
-		return fmt.Errorf("decode device-pack signature: %w", err)
-	}
-	var trailing any
-	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errors.New("device-pack signature must contain exactly one JSON object")
-	}
-	if envelope.Schema != 1 {
-		return fmt.Errorf("unsupported device-pack signature schema %d", envelope.Schema)
-	}
-	if !keyIDPattern.MatchString(envelope.KeyID) || strings.Contains(envelope.KeyID, "..") {
-		return errors.New("invalid device-pack signature key id")
+	envelope, err := decodeDetachedSignature(signatureBytes)
+	if err != nil {
+		return err
 	}
 
 	keyPath := filepath.Join(keyDir, envelope.KeyID+".pub")
@@ -83,11 +71,41 @@ func VerifyDetachedSignature(manifestPath, signaturePath, keyDir string) error {
 	if err != nil || len(publicKey) != ed25519.PublicKeySize {
 		return errors.New("invalid device-pack Ed25519 public key")
 	}
+	return verifyDetachedSignatureBytes(manifestBytes, envelope, ed25519.PublicKey(publicKey))
+}
+
+func decodeDetachedSignature(raw []byte) (DetachedSignature, error) {
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	var envelope DetachedSignature
+	if err := dec.Decode(&envelope); err != nil {
+		return DetachedSignature{}, fmt.Errorf("decode device-pack signature: %w", err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return DetachedSignature{}, errors.New("device-pack signature must contain exactly one JSON object")
+	}
+	if envelope.Schema != 1 {
+		return DetachedSignature{}, fmt.Errorf("unsupported device-pack signature schema %d", envelope.Schema)
+	}
+	if !keyIDPattern.MatchString(envelope.KeyID) || strings.Contains(envelope.KeyID, "..") {
+		return DetachedSignature{}, errors.New("invalid device-pack signature key id")
+	}
+	return envelope, nil
+}
+
+func verifyDetachedSignatureBytes(manifest []byte, envelope DetachedSignature, publicKey ed25519.PublicKey) error {
+	if envelope.Schema != 1 || !keyIDPattern.MatchString(envelope.KeyID) || strings.Contains(envelope.KeyID, "..") {
+		return errors.New("invalid device-pack signature envelope")
+	}
+	if len(publicKey) != ed25519.PublicKeySize {
+		return errors.New("invalid device-pack Ed25519 public key")
+	}
 	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(envelope.Signature))
 	if err != nil || len(signature) != ed25519.SignatureSize {
 		return errors.New("invalid device-pack Ed25519 signature")
 	}
-	if !ed25519.Verify(ed25519.PublicKey(publicKey), manifestBytes, signature) {
+	if !ed25519.Verify(publicKey, manifest, signature) {
 		return errors.New("device-pack signature verification failed")
 	}
 	return nil

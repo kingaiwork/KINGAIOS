@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -116,6 +117,10 @@ func verifyArtifactFile(path string, artifact Artifact) error {
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("artifact %q must not be group/world writable", artifact.Name)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 {
+		return fmt.Errorf("artifact %q must be owned by root", artifact.Name)
 	}
 	if info.Size() != artifact.SizeBytes {
 		return fmt.Errorf("artifact %q size mismatch", artifact.Name)
