@@ -45,8 +45,8 @@ jobs:
       - name: Test Edge control plane
         run: |
           go mod verify
-          go test ./internal/devicepack ./internal/deviceidentity ./internal/update ./internal/policy ./internal/agent ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update
-          go vet ./internal/devicepack ./internal/deviceidentity ./internal/update ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update
+          go test ./internal/devicepack ./internal/devicepackadmin ./internal/deviceidentity ./internal/update ./internal/policy ./internal/agent ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update ./cmd/kingai-devicepack ./tools/device-pack-release
+          go vet ./internal/devicepack ./internal/devicepackadmin ./internal/deviceidentity ./internal/update ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update ./cmd/kingai-devicepack ./tools/device-pack-release
           go run ./tools/ci/validate-device-pack-template iot/templates/*.json
           bash -n scripts/*.sh
       - name: Gate beta on verified software evidence
@@ -100,7 +100,7 @@ jobs:
           - Bootable board image: no
           - Hardware certification claim: none
           - Policy / Approval / Task / Memory / Model / Audit: included
-          - Signed Device Pack runtime and Edge OTA target verification: included
+          - Signed Device Pack runtime, root-only lifecycle administration and Edge OTA target verification: included
 
           This generic artifact is a governed Edge software foundation. Use a hardware-specific signed Device Pack and complete `iot/HIL-GATES.md` before making a board-support claim.
           EOF
