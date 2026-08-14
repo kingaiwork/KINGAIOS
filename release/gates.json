@@ -4,7 +4,7 @@
   "container_image_ci": true,
   "container_multiarch_ci": true,
   "installer_vm": true,
-  "installable_live_iso_vm": false,
+  "installable_live_iso_vm": true,
   "desktop_live_vm": true,
   "server_bios_uefi_vm": true,
   "ab_update_vm": true,
@@ -17,5 +17,5 @@
   "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. The KINGAI OS Container amd64 image build/runtime smoke and dedicated linux/amd64 + linux/arm64 Buildx verification are successful. Existing verified gates include Server/Desktop boot foundations, direct installer VM, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill. The exact Live ISO -> embedded squashfs -> disposable disk -> installed UEFI boot path is a separate required gate and remains false until that workflow succeeds. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
+  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container amd64 runtime and linux/amd64 + linux/arm64 Buildx verification are successful. Server/Desktop boot foundations, direct installer VM, exact Server Live ISO -> embedded squashfs -> disposable GPT/EFI/A-B/LUKS disk -> installed UEFI boot, Recovery/offline recovery drill, Microsoft-enrolled OVMF Secure Boot, pinned-root TUF HTTPS tamper rejection, and A/B health confirmation with rollback drill are verified. Production TUF repository keys/signing material, branch governance, production artifact signing and Cloudflare delivery credentials remain protected gates."
 }
