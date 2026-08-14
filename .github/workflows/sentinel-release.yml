@@ -19,7 +19,7 @@ env:
 
 concurrency:
   group: kingai-sentinel-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-test-publish:
@@ -144,14 +144,19 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "title=$title" >> "$GITHUB_OUTPUT"
 
-      - name: Create Sentinel GitHub prerelease
+      - name: Ensure Sentinel GitHub prerelease exists
         shell: bash
         run: |
-          gh release create '${{ steps.release.outputs.tag }}' \
-            --target "$GITHUB_SHA" \
-            --title '${{ steps.release.outputs.title }}' \
-            --notes-file release-notes.md \
-            --prerelease
+          tag='${{ steps.release.outputs.tag }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Reusing existing prerelease: $tag"
+          else
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title '${{ steps.release.outputs.title }}' \
+              --notes-file release-notes.md \
+              --prerelease
+          fi
 
       - name: Publish Sentinel ISO
         env:
