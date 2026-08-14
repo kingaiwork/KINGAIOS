@@ -12,7 +12,11 @@ features:
   governed_runtime: true
   local_ai_runtime: optional
   generic_privileged_execd: false
+  embedded_device_broker: true
+  device_handler_transport: unix_socket
+  generic_root_shell: false
   device_packs: true
+  board_binding: true
   ota_updates: true
   recovery: true
 kingai:
@@ -25,7 +29,14 @@ kingai:
   model_fabric: true
   memory_fabric: true
   edge_agent_runtime: true
+  device_capability_runtime: true
   audit: true
+security:
+  daemon_user: _kingai
+  device_pack_owner: root
+  handler_socket_mode: "0600"
+  handler_namespace: /run/kingai-device
+  management_tcp_default: false
 size_budget_mib:
   target: 600
   warning: 750
