@@ -1,9 +1,9 @@
 [Unit]
 Description=KINGAI OS Core Daemon
 Documentation=https://os.kingai.work/docs
-After=local-fs.target
+After=local-fs.target kingai-execd.service
 Before=multi-user.target
-Wants=kingai-health-scan.timer
+Wants=kingai-execd.service kingai-health-scan.timer
 
 [Service]
 Type=simple
