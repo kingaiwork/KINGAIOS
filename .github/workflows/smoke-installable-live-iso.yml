@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 85
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -57,14 +57,25 @@ jobs:
           #!/bin/sh
           set -eu
           mountpoint -q /var/lib/kingai-state
+          mountpoint -q /var/lib/kingai
+          mountpoint -q /var/log/kingai
           test -e /dev/mapper/KINGAI_STATE
+          findmnt -rn -T /var/lib/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          findmnt -rn -T /var/log/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          test -f /var/lib/kingai-state/kingai/runtime/.layout-v1-ready
+          grep -Fq 'origin=fresh-install' /var/lib/kingai-state/kingai/runtime/.layout-v1-ready
+          echo iso-runtime-persistence > /var/lib/kingai/iso-runtime-persistence.txt
+          sync
+          test "$(cat /var/lib/kingai-state/kingai/runtime/lib/iso-runtime-persistence.txt)" = iso-runtime-persistence
+          echo KINGAI_ISO_ENCRYPTED_RUNTIME_STATE_OK > /dev/ttyS0
           echo KINGAI_ISO_INSTALLED_BOOT_OK > /dev/ttyS0
           EOF
           sudo chmod 0755 "$root/usr/lib/kingai/kingai-iso-installed-smoke"
           sudo tee "$root/usr/lib/systemd/system/kingai-iso-installed-smoke.service" >/dev/null <<'EOF'
           [Unit]
           Description=KINGAI installable ISO boot proof
-          After=local-fs.target
+          After=local-fs.target kingaid.service
+          Wants=kingaid.service
 
           [Service]
           Type=oneshot
@@ -124,7 +135,7 @@ jobs:
               --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
           jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' ci/install-result.json >/dev/null
 
-      - name: Validate installed A-B disk
+      - name: Validate installed A-B disk and encrypted runtime layout
         shell: bash
         run: |
           sudo udevadm settle
@@ -132,16 +143,29 @@ jobs:
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
           sudo cryptsetup isLuks /dev/nbd0p4
-          mkdir -p ci/check-root ci/check-efi
+          mkdir -p ci/check-root ci/check-efi ci/check-state
           sudo mount /dev/nbd0p2 ci/check-root
           sudo mount /dev/nbd0p1 ci/check-efi
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_OFFLINE
+          sudo mount /dev/mapper/KINGAI_STATE_OFFLINE ci/check-state
           grep -q '^NAME="KINGAI OS"' ci/check-root/usr/lib/os-release
           grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
+          grep -Fq '/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults 0 2' ci/check-root/etc/fstab
+          grep -Fq '/var/lib/kingai-state/kingai/runtime/lib /var/lib/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state' ci/check-root/etc/fstab
+          grep -Fq '/var/lib/kingai-state/kingai/runtime/log /var/log/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state' ci/check-root/etc/fstab
+          if grep -Fq 'KINGAI_STATE /var/lib/kingai-state ext4 defaults,nofail' ci/check-root/etc/fstab; then
+            echo 'ISO-installed system contains legacy optional encrypted STATE mount' >&2
+            exit 1
+          fi
+          sudo test -f ci/check-state/kingai/runtime/.layout-v1-ready
+          sudo grep -Fq 'origin=fresh-install' ci/check-state/kingai/runtime/.layout-v1-ready
           test -f ci/check-root/boot/grub/grub.cfg
           grep -q 'menuentry.*Slot A' ci/check-root/boot/grub/grub.cfg
           grep -q 'menuentry.*Slot B' ci/check-root/boot/grub/grub.cfg
           test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
           test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
+          sudo umount ci/check-state
+          sudo cryptsetup close KINGAI_STATE_OFFLINE
           sudo umount ci/check-efi
           sudo umount ci/check-root
 
@@ -171,6 +195,7 @@ jobs:
           set -e
           cat ci/qemu-installed-from-iso.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_ISO_ENCRYPTED_RUNTIME_STATE_OK' ci/qemu-installed-from-iso.log
           grep -Fq 'KINGAI_ISO_INSTALLED_BOOT_OK' ci/qemu-installed-from-iso.log
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed-from-iso.log
           if grep -Fq 'grub>' ci/qemu-installed-from-iso.log; then
@@ -181,6 +206,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          mount | awk '$3 ~ /ci\/(source|media|check-root|check-efi)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          mount | awk '$3 ~ /ci\/(source|media|check-root|check-efi|check-state)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE_OFFLINE 2>/dev/null || true
           sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
           sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
