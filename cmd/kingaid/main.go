@@ -74,6 +74,7 @@ type memoryPutRequest struct {
 	Agent       string          `json:"agent"`
 	Kind        string          `json:"kind,omitempty"`
 	Sensitivity string          `json:"sensitivity,omitempty"`
+	Metadata    memory.Metadata `json:"metadata,omitempty"`
 	Data        json.RawMessage `json:"data"`
 }
 
@@ -172,7 +173,7 @@ func main() {
 		healthCtx, cancel := context.WithTimeout(r.Context(), 150*time.Millisecond)
 		if execClient.Health(healthCtx) == nil { execState = "ready" }
 		cancel()
-		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "memory_service": "enabled", "model_router": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "audit": "enabled", "version": version})
+		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "memory_service": "enabled", "memory_layers": "M0-M6", "model_router": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "audit": "enabled", "version": version})
 	})
 
 	mux.HandleFunc("/v1/policy/evaluate", func(w http.ResponseWriter, r *http.Request) {
@@ -242,13 +243,21 @@ func main() {
 		uid := peerUID(r.Context()); if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
 		if !agentIdentityAllowed(in.Agent, usernameForUID(uid), uid) || !registry.Has(in.Agent) { http.Error(w, "agent identity is not authorized", http.StatusForbidden); return }
 		if len(in.Data) == 0 || !json.Valid(in.Data) { http.Error(w, "data must be valid JSON", http.StatusBadRequest); return }
-		record, err := memoryStore.Put(ownerForUID(uid), in.Kind, in.Sensitivity, in.Data); if err != nil { http.Error(w, "unable to store memory", http.StatusInternalServerError); return }
-		appendAudit(auditPath, audit.Event{Type: "memory.put", Agent: in.Agent, Allowed: true, PeerUID: uid}); writeJSON(w, http.StatusCreated, record)
+		if in.Metadata.Agent == "" { in.Metadata.Agent = in.Agent }
+		record, err := memoryStore.PutWithMetadata(ownerForUID(uid), in.Kind, in.Sensitivity, in.Metadata, in.Data); if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+		appendAudit(auditPath, audit.Event{Type: "memory.put", Agent: in.Agent, Allowed: true, PeerUID: uid, Reason: string(record.Layer)}); writeJSON(w, http.StatusCreated, record)
 	})
 	mux.HandleFunc("/v1/memory/list", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
 		uid := peerUID(r.Context()); if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
 		items, err := memoryStore.List(ownerForUID(uid), 100); if err != nil { http.Error(w, "unable to list memory", http.StatusInternalServerError); return }; writeJSON(w, http.StatusOK, items)
+	})
+	mux.HandleFunc("/v1/memory/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		uid := peerUID(r.Context()); if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
+		var query memory.Query; if !decodeJSON(w, r, 64<<10, &query) { return }
+		items, err := memoryStore.Search(ownerForUID(uid), query); if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+		appendAudit(auditPath, audit.Event{Type: "memory.search", Allowed: true, PeerUID: uid, Reason: fmt.Sprintf("results=%d", len(items))}); writeJSON(w, http.StatusOK, items)
 	})
 	mux.HandleFunc("/v1/memory/delete", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
@@ -296,9 +305,7 @@ func main() {
 		uid := peerUID(r.Context()); if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
 		var in idRequest; if !decodeJSON(w, r, 16<<10, &in) { return }
 		task, err := taskScheduler.RunReady(r.Context(), in.ID, uid)
-		if err != nil {
-			appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: false, PeerUID: uid, Reason: err.Error()}); writeJSON(w, http.StatusBadGateway, task); return
-		}
+		if err != nil { appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: false, PeerUID: uid, Reason: err.Error()}); writeJSON(w, http.StatusBadGateway, task); return }
 		appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: true, PeerUID: uid, Reason: string(task.Status)}); writeJSON(w, http.StatusOK, task)
 	})
 
