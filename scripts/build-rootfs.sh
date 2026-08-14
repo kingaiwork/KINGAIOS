@@ -71,6 +71,7 @@ build_binary() {
     kingai-update) pkg=./cmd/kingai-update ;;
     kingai-installer) pkg=./cmd/kingai-installer ;;
     kingai-recovery) pkg=./cmd/kingai-recovery ;;
+    kingai-desktop-bridge) pkg=./cmd/kingai-desktop-bridge ;;
     *) echo "unknown KINGAI binary: $cmd" >&2; exit 2 ;;
   esac
   CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
@@ -80,8 +81,11 @@ build_binary() {
 }
 
 case "$PROFILE" in
-  server|desktop)
+  server)
     KINGAI_BINARIES=(kingai kingaid kingai-execd kingai-update kingai-installer kingai-recovery)
+    ;;
+  desktop)
+    KINGAI_BINARIES=(kingai kingaid kingai-execd kingai-update kingai-installer kingai-recovery kingai-desktop-bridge)
     ;;
   iot)
     # Edge keeps the governed non-root Runtime but does not ship the generic
@@ -112,6 +116,9 @@ if [[ "$PROFILE" == "server" || "$PROFILE" == "desktop" ]]; then
   install -Dm755 scripts/kingai-install-live.sh "$ROOT/usr/sbin/kingai-install"
   ln -sfn /usr/lib/kingai/kingai-installer "$ROOT/usr/bin/kingai-installer"
   ln -sfn /usr/lib/kingai/kingai-recovery "$ROOT/usr/bin/kingai-recovery"
+fi
+if [[ "$PROFILE" == "desktop" ]]; then
+  install -Dm755 "$OUT/kingai-desktop-bridge-$ARCH" "$ROOT/usr/lib/kingai/kingai-desktop-bridge"
 fi
 if [[ "$PROFILE" == "recovery" ]]; then
   install -Dm755 "$OUT/kingai-recovery-$ARCH" "$ROOT/usr/lib/kingai/kingai-recovery"
@@ -184,6 +191,9 @@ if [[ "$PROFILE" == "desktop" ]]; then
   cp -a --no-preserve=ownership desktop/plasmoids/org.kingai.agentcenter "$ROOT/usr/share/plasma/plasmoids/"
   install -Dm755 desktop/welcome/launch.sh "$ROOT/usr/lib/kingai/kingai-welcome"
   install -Dm644 desktop/welcome/kingai-welcome.desktop "$ROOT/etc/xdg/autostart/kingai-welcome.desktop"
+  test -x "$ROOT/usr/lib/kingai/kingai-desktop-bridge" || { echo "KINGAI Desktop Bridge missing from desktop rootfs" >&2; exit 1; }
+  test -f "$ROOT/usr/lib/systemd/user/kingai-desktop-bridge.service" || { echo "Desktop Bridge user service missing from desktop rootfs" >&2; exit 1; }
+  test -f "$ROOT/etc/xdg/autostart/kingai-desktop-bridge.desktop" || { echo "Desktop Bridge autostart missing from desktop rootfs" >&2; exit 1; }
   test -f "$ROOT/usr/lib/systemd/system/sddm.service" || { echo "sddm.service missing from desktop rootfs" >&2; exit 1; }
   ln -sfn /usr/lib/systemd/system/graphical.target "$ROOT/etc/systemd/system/default.target"
   ln -sfn /usr/lib/systemd/system/sddm.service "$ROOT/etc/systemd/system/display-manager.service"
