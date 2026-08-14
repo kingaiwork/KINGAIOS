@@ -19,6 +19,9 @@ features:
   device_pack_schema: v2
   device_pack_detached_signatures: ed25519
   device_pack_artifact_integrity: sha256
+  device_pack_lifecycle_admin: root_only
+  device_pack_atomic_activation: true
+  device_pack_upgrade_backups: true
   board_binding: true
   trusted_device_identity: true
   physical_risk_floors: true
@@ -31,6 +34,7 @@ features:
 kingai:
   cli: true
   daemon: true
+  device_pack_admin_cli: true
   policy_engine: true
   approval_broker: true
   task_graph: true
@@ -47,6 +51,8 @@ security:
   device_pack_manifest_dir: /etc/kingai/device-packs
   device_pack_artifact_root: /usr/lib/kingai/device-packs
   device_pack_trust_dir: /etc/kingai/trust/device-pack-keys
+  device_pack_admin_audit: /var/log/kingai/device-pack-admin.jsonl
+  device_pack_trust_modification: owner_root_only
   handler_socket_mode: "0600"
   handler_namespace: /run/kingai-device
   management_tcp_default: false
