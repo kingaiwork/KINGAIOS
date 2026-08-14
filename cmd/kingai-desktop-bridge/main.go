@@ -22,15 +22,15 @@ var version = "0.1.0-dev"
 const snapshotSchema = 1
 
 type privateTask struct {
-	ID         string           `json:"id"`
-	Goal       string           `json:"goal"`
-	Agent      string           `json:"agent"`
-	Status     taskgraph.Status `json:"status"`
-	StepCount  int              `json:"step_count"`
-	DoneSteps  int              `json:"done_steps"`
-	FailedSteps int             `json:"failed_steps"`
-	CreatedAt  time.Time        `json:"created_at"`
-	UpdatedAt  time.Time        `json:"updated_at"`
+	ID          string           `json:"id"`
+	Goal        string           `json:"goal"`
+	Agent       string           `json:"agent"`
+	Status      taskgraph.Status `json:"status"`
+	StepCount   int              `json:"step_count"`
+	DoneSteps   int              `json:"done_steps"`
+	FailedSteps int              `json:"failed_steps"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
 type privateSnapshot struct {
@@ -118,9 +118,9 @@ func sanitizeTasks(tasks []taskgraph.Task) []privateTask {
 	out := make([]privateTask, 0, len(tasks))
 	for _, task := range tasks {
 		item := privateTask{
-			ID:        task.ID,
-			Goal:      strings.TrimSpace(task.Goal),
-			Agent:     strings.TrimSpace(task.Agent),
+			ID:        truncateText(strings.TrimSpace(task.ID), 96),
+			Goal:      truncateText(strings.TrimSpace(task.Goal), 512),
+			Agent:     truncateText(strings.TrimSpace(task.Agent), 64),
 			Status:    task.Status,
 			StepCount: len(task.Steps),
 			CreatedAt: task.CreatedAt,
@@ -137,6 +137,17 @@ func sanitizeTasks(tasks []taskgraph.Task) []privateTask {
 		out = append(out, item)
 	}
 	return out
+}
+
+func truncateText(value string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes]) + "…"
 }
 
 func privateSnapshotPath() (string, error) {
