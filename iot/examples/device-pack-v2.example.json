@@ -1,0 +1,48 @@
+{
+  "schema": 2,
+  "id": "kingai.example-arm64-device",
+  "name": "KINGAI Device Pack v2 Example",
+  "version": "0.1.0-dev",
+  "arch": "arm64",
+  "vendor": "Example Vendor",
+  "board_ids": ["example-board-v1"],
+  "boot": {
+    "method": "uefi",
+    "firmware_required": false,
+    "dtb_required": false,
+    "secure_boot_capable": true
+  },
+  "artifacts": [
+    {
+      "name": "example-device-config.json",
+      "kind": "config",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size_bytes": 1024
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "device.telemetry.read",
+      "handler": "telemetry-read",
+      "operation": "read",
+      "risk": "L0",
+      "approval_required": false,
+      "resources": ["sensor:temperature"],
+      "description": "Read a declared telemetry sensor through a registered Device Pack handler."
+    },
+    {
+      "id": "device.power.control",
+      "handler": "power-control",
+      "operation": "control",
+      "risk": "L4",
+      "approval_required": true,
+      "resources": ["power:system"],
+      "description": "Example high-risk control capability. It requires approval and is not a shell command."
+    }
+  ],
+  "security": {
+    "signed_manifest": true,
+    "redistribution_reviewed": true,
+    "notes": "Schema/CI example only. This file is not evidence of support for any real hardware."
+  }
+}

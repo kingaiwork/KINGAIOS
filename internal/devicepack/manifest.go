@@ -5,12 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 )
 
-var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,127}$`)
+const SchemaVersion = 2
+
+var (
+	idPattern         = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,127}$`)
+	capabilityPattern = regexp.MustCompile(`^device\.[a-z0-9][a-z0-9._-]{1,126}$`)
+	handlerPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,63}$`)
+	resourcePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,255}$`)
+)
 
 type Boot struct {
 	Method            string `json:"method"`
@@ -28,6 +37,16 @@ type Artifact struct {
 	Source    string `json:"source,omitempty"`
 }
 
+type Capability struct {
+	ID               string   `json:"id"`
+	Handler          string   `json:"handler"`
+	Operation        string   `json:"operation"`
+	Risk             string   `json:"risk"`
+	ApprovalRequired bool     `json:"approval_required"`
+	Resources        []string `json:"resources"`
+	Description      string   `json:"description,omitempty"`
+}
+
 type Security struct {
 	SignedManifest         bool   `json:"signed_manifest"`
 	RedistributionReviewed bool   `json:"redistribution_reviewed"`
@@ -36,16 +55,17 @@ type Security struct {
 }
 
 type Manifest struct {
-	Schema    int        `json:"schema"`
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Version   string     `json:"version"`
-	Arch      string     `json:"arch"`
-	Vendor    string     `json:"vendor"`
-	BoardIDs  []string   `json:"board_ids,omitempty"`
-	Boot      Boot       `json:"boot"`
-	Artifacts []Artifact `json:"artifacts"`
-	Security  Security   `json:"security"`
+	Schema       int          `json:"schema"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Version      string       `json:"version"`
+	Arch         string       `json:"arch"`
+	Vendor       string       `json:"vendor"`
+	BoardIDs     []string     `json:"board_ids,omitempty"`
+	Boot         Boot         `json:"boot"`
+	Artifacts    []Artifact   `json:"artifacts"`
+	Capabilities []Capability `json:"capabilities"`
+	Security     Security     `json:"security"`
 }
 
 func Load(path string) (Manifest, error) {
@@ -59,6 +79,10 @@ func Load(path string) (Manifest, error) {
 	if err := dec.Decode(&m); err != nil {
 		return Manifest{}, fmt.Errorf("decode device pack: %w", err)
 	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return Manifest{}, errors.New("device pack must contain exactly one JSON object")
+	}
 	if err := m.Validate(); err != nil {
 		return Manifest{}, err
 	}
@@ -66,17 +90,25 @@ func Load(path string) (Manifest, error) {
 }
 
 func (m Manifest) Validate() error {
-	if m.Schema != 1 {
+	if m.Schema != SchemaVersion {
 		return fmt.Errorf("unsupported device-pack schema %d", m.Schema)
 	}
 	if !idPattern.MatchString(m.ID) {
 		return errors.New("invalid device-pack id")
 	}
-	if strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Version) == "" || strings.TrimSpace(m.Vendor) == "" {
-		return errors.New("name, version and vendor are required")
+	if strings.TrimSpace(m.Name) == "" || len(m.Name) > 160 || strings.TrimSpace(m.Version) == "" || len(m.Version) > 64 || strings.TrimSpace(m.Vendor) == "" || len(m.Vendor) > 120 {
+		return errors.New("invalid name, version or vendor")
 	}
 	if m.Arch != "amd64" && m.Arch != "arm64" {
 		return errors.New("arch must be amd64 or arm64")
+	}
+	if len(m.BoardIDs) > 64 || duplicateStrings(m.BoardIDs) {
+		return errors.New("invalid board id set")
+	}
+	for _, boardID := range m.BoardIDs {
+		if strings.TrimSpace(boardID) == "" || len(boardID) > 160 || containsControl(boardID) {
+			return errors.New("invalid board id")
+		}
 	}
 	switch m.Boot.Method {
 	case "uefi", "uboot", "vendor":
@@ -86,15 +118,15 @@ func (m Manifest) Validate() error {
 	if len(m.Artifacts) == 0 {
 		return errors.New("at least one device-pack artifact is required")
 	}
-	seen := map[string]struct{}{}
+	seenArtifacts := map[string]struct{}{}
 	for _, a := range m.Artifacts {
-		if strings.TrimSpace(a.Name) == "" {
-			return errors.New("artifact name is required")
+		if strings.TrimSpace(a.Name) == "" || len(a.Name) > 255 || containsControl(a.Name) {
+			return errors.New("artifact name is invalid")
 		}
-		if _, ok := seen[a.Name]; ok {
+		if _, ok := seenArtifacts[a.Name]; ok {
 			return fmt.Errorf("duplicate artifact %q", a.Name)
 		}
-		seen[a.Name] = struct{}{}
+		seenArtifacts[a.Name] = struct{}{}
 		switch a.Kind {
 		case "kernel", "initrd", "dtb", "firmware", "bootloader", "driver", "config":
 		default:
@@ -107,10 +139,30 @@ func (m Manifest) Validate() error {
 		if a.SizeBytes < 0 {
 			return fmt.Errorf("artifact %q has invalid size", a.Name)
 		}
-		// Firmware and vendor boot components are high-risk redistribution items.
-		if (a.Kind == "firmware" || a.Kind == "bootloader") && strings.TrimSpace(a.License) == "" {
-			return fmt.Errorf("artifact %q requires an explicit license field", a.Name)
+		if len(a.License) > 160 || len(a.Source) > 2048 || containsUnsafeText(a.License) || containsUnsafeText(a.Source) {
+			return fmt.Errorf("artifact %q has invalid metadata", a.Name)
 		}
+		if a.Kind == "firmware" || a.Kind == "bootloader" || a.Kind == "driver" {
+			if strings.TrimSpace(a.License) == "" || strings.TrimSpace(a.Source) == "" {
+				return fmt.Errorf("artifact %q requires explicit license and source", a.Name)
+			}
+		}
+	}
+	if len(m.Capabilities) > 128 {
+		return errors.New("too many device capabilities")
+	}
+	seenCapabilities := map[string]struct{}{}
+	for _, capability := range m.Capabilities {
+		if _, ok := seenCapabilities[capability.ID]; ok {
+			return fmt.Errorf("duplicate capability %q", capability.ID)
+		}
+		seenCapabilities[capability.ID] = struct{}{}
+		if err := validateCapability(capability); err != nil {
+			return fmt.Errorf("capability %q: %w", capability.ID, err)
+		}
+	}
+	if len(m.Security.MinimumFirmwareVersion) > 128 || len(m.Security.Notes) > 2000 || containsUnsafeText(m.Security.MinimumFirmwareVersion) || containsUnsafeText(m.Security.Notes) {
+		return errors.New("invalid security metadata")
 	}
 	if !m.Security.SignedManifest {
 		return errors.New("device-pack manifest must be signed before release")
@@ -119,4 +171,81 @@ func (m Manifest) Validate() error {
 		return errors.New("device-pack redistribution review is required")
 	}
 	return nil
+}
+
+func CapabilityIDs(m Manifest) []string {
+	ids := make([]string, 0, len(m.Capabilities))
+	for _, capability := range m.Capabilities {
+		ids = append(ids, capability.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func validateCapability(c Capability) error {
+	if !capabilityPattern.MatchString(c.ID) || strings.Contains(c.ID, "..") || strings.Contains(c.ID, "*") {
+		return errors.New("invalid capability id")
+	}
+	if !handlerPattern.MatchString(c.Handler) || strings.Contains(c.Handler, "..") || strings.ContainsAny(c.Handler, "/\\ ;$`*?") {
+		return errors.New("handler must be a logical registered id, not a command or path")
+	}
+	switch c.Operation {
+	case "read", "write", "control", "reset", "update":
+	default:
+		return errors.New("invalid operation")
+	}
+	if riskRank(c.Risk) < 0 {
+		return errors.New("risk must be L0 through L6")
+	}
+	if len(c.Resources) == 0 || len(c.Resources) > 32 || duplicateStrings(c.Resources) {
+		return errors.New("invalid resource set")
+	}
+	for _, resource := range c.Resources {
+		if !resourcePattern.MatchString(resource) || strings.ContainsAny(resource, "*?[]{};$`\\\n\r\x00") {
+			return errors.New("resource contains wildcard, shell or control syntax")
+		}
+	}
+	if len(c.Description) > 500 || containsUnsafeText(c.Description) {
+		return errors.New("invalid capability description")
+	}
+	if c.Operation != "read" && riskRank(c.Risk) >= 3 && !c.ApprovalRequired {
+		return errors.New("high-risk mutating capability requires approval")
+	}
+	return nil
+}
+
+func riskRank(risk string) int {
+	if len(risk) != 2 || risk[0] != 'L' || risk[1] < '0' || risk[1] > '6' {
+		return -1
+	}
+	return int(risk[1] - '0')
+}
+
+func duplicateStrings(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return true
+		}
+		seen[value] = struct{}{}
+	}
+	return false
+}
+
+func containsControl(value string) bool {
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+func containsUnsafeText(value string) bool {
+	for _, r := range value {
+		if r == 0 || r == 0x7f || (r < 0x20 && r != '\n' && r != '\r' && r != '\t') {
+			return true
+		}
+	}
+	return false
 }
