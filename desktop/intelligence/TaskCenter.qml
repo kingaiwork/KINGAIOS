@@ -40,10 +40,20 @@ ColumnLayout {
                 if (snapshot.schema !== 1 || snapshot.product !== "KINGAI OS Desktop" || !(snapshot.tasks instanceof Array)) {
                     throw new Error("invalid private snapshot schema")
                 }
+                var updated = Date.parse(snapshot.updated_at || "")
+                if (isNaN(updated)) throw new Error("invalid private snapshot timestamp")
+                var ageMs = Date.now() - updated
+                if (ageMs < -60000) throw new Error("private snapshot timestamp is in the future")
+
                 root.tasks = snapshot.tasks
                 root.bridgeUpdatedAt = snapshot.updated_at || "—"
-                root.bridgeState = "ready"
-                root.bridgeError = ""
+                if (ageMs > 15000) {
+                    root.bridgeState = "stale"
+                    root.bridgeError = "Private bridge data is stale; showing last known tasks"
+                } else {
+                    root.bridgeState = "ready"
+                    root.bridgeError = ""
+                }
             } catch (e) {
                 root.bridgeState = "invalid"
                 root.bridgeError = "Private bridge snapshot rejected"
@@ -64,8 +74,8 @@ ColumnLayout {
             font.bold: true
         }
         Label {
-            text: root.bridgeState === "ready" ? "Private bridge · ready" : "Private bridge · " + root.bridgeState
-            color: root.bridgeState === "ready" ? "#79d58d" : "#9ba4af"
+            text: "Private bridge · " + root.bridgeState
+            color: root.bridgeState === "ready" ? "#79d58d" : (root.bridgeState === "stale" ? "#d4aa68" : "#9ba4af")
             font.pixelSize: 10
         }
     }
@@ -80,15 +90,15 @@ ColumnLayout {
 
     Label {
         Layout.fillWidth: true
-        visible: root.bridgeState !== "ready"
-        text: root.bridgeError === "" ? "Waiting for KINGAI Desktop Bridge…" : root.bridgeError
-        color: "#9099a5"
+        visible: root.bridgeState !== "ready" && root.bridgeError !== ""
+        text: root.bridgeError
+        color: root.bridgeState === "stale" ? "#d4aa68" : "#9099a5"
         font.pixelSize: 12
     }
 
     Label {
         Layout.fillWidth: true
-        visible: root.bridgeState === "ready" && root.tasks.length === 0
+        visible: (root.bridgeState === "ready" || root.bridgeState === "stale") && root.tasks.length === 0
         text: "No tasks for this user yet."
         color: "#9099a5"
         font.pixelSize: 12
@@ -155,7 +165,7 @@ ColumnLayout {
 
     Label {
         Layout.fillWidth: true
-        visible: root.bridgeState === "ready"
+        visible: root.bridgeState === "ready" || root.bridgeState === "stale"
         text: "Private snapshot updated: " + root.bridgeUpdatedAt
         color: "#626c78"
         font.pixelSize: 9
