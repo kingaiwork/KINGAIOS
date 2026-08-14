@@ -303,6 +303,9 @@ func preparePersistentStateLayout(rootA, rootB, stateRoot string) error {
 			return fmt.Errorf("harden encrypted STATE runtime directory %s: %w", p, err)
 		}
 	}
+	if err := writeFreshStateMarker(stateRoot); err != nil {
+		return err
+	}
 	for _, root := range []string{rootA, rootB} {
 		for _, rel := range []string{"var/lib/kingai-state", "var/lib/kingai", "var/log/kingai"} {
 			p := filepath.Join(root, rel)
@@ -310,6 +313,34 @@ func preparePersistentStateLayout(rootA, rootB, stateRoot string) error {
 				return fmt.Errorf("create installed persistent mountpoint %s: %w", p, err)
 			}
 		}
+	}
+	return nil
+}
+
+func writeFreshStateMarker(stateRoot string) error {
+	marker := filepath.Join(stateRoot, "kingai/runtime/.layout-v1-ready")
+	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("create encrypted STATE layout marker: %w", err)
+	}
+	if _, err := f.WriteString("layout=1\norigin=fresh-install\n"); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write encrypted STATE layout marker: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("sync encrypted STATE layout marker: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close encrypted STATE layout marker: %w", err)
+	}
+	d, err := os.Open(filepath.Dir(marker))
+	if err != nil {
+		return fmt.Errorf("open encrypted STATE marker directory: %w", err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("sync encrypted STATE marker directory: %w", err)
 	}
 	return nil
 }
