@@ -6,6 +6,7 @@ on:
       - .github/workflows/execd.yml
       - cmd/kingai-execd/**
       - internal/executor/**
+      - internal/audit/**
       - systemd/kingai-execd.service
       - scripts/build-rootfs.sh
       - scripts/build-foundation.sh
@@ -39,6 +40,9 @@ jobs:
           grep -q '^ProtectSystem=strict$' systemd/kingai-execd.service
           grep -q '^RestrictAddressFamilies=AF_UNIX$' systemd/kingai-execd.service
           grep -q '^CapabilityBoundingSet=$' systemd/kingai-execd.service
+          grep -q '^MemoryMax=128M$' systemd/kingai-execd.service
+          grep -q '^TasksMax=32$' systemd/kingai-execd.service
+          grep -q '^LimitNOFILE=256$' systemd/kingai-execd.service
       - name: Smoke constrained Unix execution broker
         shell: bash
         run: |
@@ -90,10 +94,19 @@ jobs:
           injection = json.loads((root/'injection.json').read_text())
           assert injection['ok'] is False
           assert injection['message'] == 'invalid service unit'
+          assert len(injection['execution_id']) == 32
+          assert injection['agent'] == 'system-ops'
+          assert injection['duration_ms'] >= 0
 
           unknown = json.loads((root/'unknown.json').read_text())
           assert unknown['ok'] is False
           assert 'not registered' in unknown['message']
+
+          events = [json.loads(line) for line in (root/'execd-audit.jsonl').read_text().splitlines() if line.strip()]
+          assert len(events) >= 2
+          by_cap = {event.get('capability'): event for event in events}
+          assert by_cap['service.restart']['execution_id'] == injection['execution_id']
+          assert by_cap['service.restart']['duration_ms'] >= 0
           PY
 
           test ! -e /tmp/kingai-execd-pwned
