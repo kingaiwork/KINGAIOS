@@ -59,8 +59,8 @@ func main() {
 		var req executor.Request
 		if err := dec.Decode(&req); err != nil { http.Error(w, "invalid request", http.StatusBadRequest); return }
 		result, execErr := broker.Execute(r.Context(), req)
+		if execErr != nil && result.Message == "" { result.Message = execErr.Error() }
 		reason := result.Message
-		if execErr != nil && reason == "" { reason = execErr.Error() }
 		if err := audit.Append(auditPath, audit.Event{Type: "execution.run", Agent: req.Agent, Capability: req.Capability, Allowed: execErr == nil && result.OK, PeerUID: uid, TargetHash: audit.HashTarget(req.Target), Reason: reason}); err != nil {
 			log.Printf("execution audit append failed: %v", err)
 		}
