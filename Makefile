@@ -26,6 +26,7 @@ test:
 
 desktop-validate:
 	bash scripts/validate-desktop.sh
+	bash scripts/test-desktop-intelligence-launcher.sh
 
 check: vet test desktop-validate
 	bash -n scripts/*.sh
