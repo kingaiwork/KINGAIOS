@@ -10,11 +10,13 @@ ApplicationWindow {
     minimumWidth: 860
     minimumHeight: 600
     visible: true
-    title: "KINGAI OS Desktop"
+    title: settingsMode ? "KINGAI Desktop Experience" : "KINGAI OS Desktop"
     color: "#111418"
-    property string selected: welcomeSettings.experience === "" ? "kingai-intelligence" : welcomeSettings.experience
 
-    // The Welcome UI only stages the user's choice. launch.sh commits it through
+    property bool settingsMode: false
+    property string selected: "kingai-intelligence"
+
+    // The selector only stages the user's choice. launch.sh commits it through
     // `kingai desktop set`, so a failed theme/layout application never becomes a
     // persistent Desktop selection.
     Settings {
@@ -23,18 +25,37 @@ ApplicationWindow {
         property string experience: ""
     }
 
+    function validExperience(value) {
+        return value === "kingai-intelligence" || value === "kingai-flow" || value === "kingai-classic"
+    }
+
+    function parseArguments() {
+        var args = Application.arguments || []
+        for (var i = 0; i < args.length; ++i) {
+            if (args[i] === "--settings") settingsMode = true
+            if (args[i] === "--current" && i + 1 < args.length && validExperience(args[i + 1])) {
+                selected = args[i + 1]
+                ++i
+            }
+        }
+    }
+
+    Component.onCompleted: parseArguments()
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 48
         spacing: 24
 
         Label {
-            text: "Welcome to KINGAI OS Desktop"
+            text: root.settingsMode ? "Choose your Desktop experience" : "Welcome to KINGAI OS Desktop"
             color: "white"
             font.pixelSize: 30
         }
         Label {
-            text: "Desktop is the personal-computer / PC edition. Choose the experience that fits how you work; the same governed KINGAI Core stays underneath."
+            text: root.settingsMode
+                  ? "Switch how your PC feels without changing the governed KINGAI Core underneath. Your agents, tasks, approvals, memory, models and audit remain part of the same Desktop system."
+                  : "Desktop is the personal-computer / PC edition. Choose the experience that fits how you work; the same governed KINGAI Core stays underneath."
             color: "#b8c0cc"
             font.pixelSize: 16
             wrapMode: Text.WordWrap
@@ -52,7 +73,7 @@ ApplicationWindow {
                         id: "kingai-intelligence",
                         title: "KINGAI Intelligence",
                         note: "Recommended · AI-first · Agents · Tasks · Memory",
-                        preview: "Agents   Memory\n\n        AI Workspace\n\nTasks    Knowledge"
+                        preview: "Agents   Memory\n\n        AI Workspace\n\nTasks    Approvals"
                     },
                     {
                         id: "kingai-flow",
@@ -125,7 +146,7 @@ ApplicationWindow {
                 color: "#b8c0cc"
             }
             Button {
-                text: "Enter Desktop"
+                text: root.settingsMode ? "Apply Experience" : "Enter Desktop"
                 onClicked: {
                     welcomeSettings.experience = root.selected
                     welcomeSettings.sync()
