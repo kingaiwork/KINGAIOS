@@ -1,0 +1,208 @@
+name: KINGAI OS IoT UEFI amd64 Boot Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'internal/update/**'
+      - 'cmd/kingaid/**'
+      - 'internal/devicepack/**'
+      - 'internal/deviceidentity/**'
+      - 'configs/**'
+      - 'systemd/**'
+      - 'tmpfiles/**'
+      - 'distro/packages/iot.txt'
+      - 'distro/packages/iot-uefi-amd64.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-iot-uefi-amd64-rootfs.sh'
+      - 'iot/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/smoke-iot-uefi-amd64.yml'
+  pull_request:
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'internal/update/**'
+      - 'cmd/kingaid/**'
+      - 'internal/devicepack/**'
+      - 'internal/deviceidentity/**'
+      - 'configs/**'
+      - 'systemd/**'
+      - 'tmpfiles/**'
+      - 'distro/packages/iot.txt'
+      - 'distro/packages/iot-uefi-amd64.txt'
+      - 'distro/overlay/**'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-iot-uefi-amd64-rootfs.sh'
+      - 'iot/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/smoke-iot-uefi-amd64.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-iot-uefi-amd64-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  boot-generic-uefi-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test installer and Edge control plane
+        run: |
+          go test ./internal/installer ./internal/update ./internal/devicepack ./internal/deviceidentity ./cmd/kingai-installer ./cmd/kingaid
+          go vet ./internal/installer ./internal/update ./cmd/kingai-installer ./cmd/kingaid
+          bash -n scripts/build-iot-uefi-amd64-rootfs.sh
+      - name: Install rootfs installer and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd \
+            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
+            grub-efi-amd64-bin grub2-common shim-signed grub-efi-amd64-signed sbsigntool \
+            qemu-utils qemu-system-x86 ovmf jq
+      - name: Build IoT installer binary
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+          test -x ci/kingai-installer
+      - name: Build Generic UEFI amd64 Edge rootfs
+        run: sudo --preserve-env=PATH bash scripts/build-iot-uefi-amd64-rootfs.sh dist
+      - name: Validate board rootfs boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=dist/rootfs-iot-amd64
+          test -n "$(find "$root/boot" -maxdepth 1 -name 'vmlinuz-*' -print -quit)"
+          test -n "$(find "$root/boot" -maxdepth 1 -name 'initrd.img-*' -print -quit)"
+          test ! -e "$root/usr/lib/kingai/kingai-execd"
+          test ! -e "$root/usr/lib/kingai/kingai-installer"
+          test -x "$root/usr/sbin/kingai-devicepack"
+          jq -e '.board_release=="generic-uefi-amd64" and .vm_boot_candidate==true and .hardware_verified==false and .production_release==false' "$root/usr/share/kingai/iot/board-release.json" >/dev/null
+          test "$(readlink "$root/etc/systemd/system/default.target")" = '/usr/lib/systemd/system/multi-user.target'
+      - name: Add installed Edge boot marker
+        shell: bash
+        run: |
+          root=dist/rootfs-iot-amd64
+          sudo tee "$root/usr/lib/kingai/kingai-iot-uefi-smoke" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          mountpoint -q /var/lib/kingai-state
+          test -e /dev/mapper/KINGAI_STATE
+          test ! -e /usr/lib/kingai/kingai-execd
+          test -x /usr/sbin/kingai-devicepack
+          ok=0
+          for _ in $(seq 1 40); do
+            if /usr/bin/kingai status --json > /tmp/kingai-iot-status.json 2>/dev/null && grep -Eq '"runtime_ready"[[:space:]]*:[[:space:]]*true' /tmp/kingai-iot-status.json; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ok" = 1
+          echo KINGAI_IOT_DEVICE_BROKER_READY > /dev/ttyS0
+          echo KINGAI_IOT_UEFI_BOOT_OK > /dev/ttyS0
+          EOF
+          sudo chmod 0755 "$root/usr/lib/kingai/kingai-iot-uefi-smoke"
+          sudo tee "$root/usr/lib/systemd/system/kingai-iot-uefi-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI IoT Generic UEFI amd64 boot marker
+          After=local-fs.target kingaid.service
+          Wants=kingaid.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/lib/kingai/kingai-iot-uefi-smoke
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-iot-uefi-smoke.service "$root/etc/systemd/system/multi-user.target.wants/kingai-iot-uefi-smoke.service"
+      - name: Create disposable IoT NBD target
+        shell: bash
+        run: |
+          truncate -s 10G ci/iot-uefi-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/iot-uefi-test.raw
+          sudo udevadm settle
+          test "$(lsblk -dn -o TYPE /dev/nbd0)" = disk
+          head -c 64 /dev/urandom > ci/state.key
+          chmod 600 ci/state.key
+      - name: Install IoT profile onto disposable UEFI disk
+        shell: bash
+        run: |
+          sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
+            ./ci/kingai-installer execute \
+            --target /dev/nbd0 --profile iot \
+            --source-root "$PWD/dist/rootfs-iot-amd64" \
+            --state-key "$PWD/ci/state.key" \
+            --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
+          jq -e '.active_slot=="A" and .target=="/dev/nbd0" and .profile=="iot"' ci/install-result.json >/dev/null
+      - name: Validate IoT GPT A-B encrypted STATE and UEFI fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo udevadm settle
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p1)" = KINGAI_EFI
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
+          sudo cryptsetup isLuks /dev/nbd0p4
+          mkdir -p ci/check-root ci/check-efi
+          sudo mount /dev/nbd0p2 ci/check-root
+          sudo mount /dev/nbd0p1 ci/check-efi
+          test -f ci/check-root/usr/share/kingai/iot/board-release.json
+          test ! -e ci/check-root/usr/lib/kingai/kingai-execd
+          test -x ci/check-root/usr/sbin/kingai-devicepack
+          test -f ci/check-root/boot/grub/grub.cfg
+          grep -q 'menuentry.*Slot A' ci/check-root/boot/grub/grub.cfg
+          grep -q 'menuentry.*Slot B' ci/check-root/boot/grub/grub.cfg
+          test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
+          test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
+          sudo grub-editenv ci/check-root/boot/grub/grubenv list | grep -q '^kingai_active=A$'
+          sudo umount ci/check-efi
+          sudo umount ci/check-root
+      - name: Disconnect target before VM boot
+        run: |
+          sudo qemu-nbd --disconnect /dev/nbd0
+          sudo udevadm settle
+      - name: Boot Generic UEFI amd64 Edge disk in OVMF
+        shell: bash
+        run: |
+          codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
+          varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$codefd" && test -f "$varsfd"
+          cp "$varsfd" ci/OVMF_VARS.fd
+          set +e
+          timeout 240 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd \
+            -drive file=ci/iot-uefi-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot -snapshot > ci/qemu-iot-uefi.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-iot-uefi.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_IOT_DEVICE_BROKER_READY' ci/qemu-iot-uefi.log
+          grep -Fq 'KINGAI_IOT_UEFI_BOOT_OK' ci/qemu-iot-uefi.log
+          if grep -Fq 'grub>' ci/qemu-iot-uefi.log; then echo 'IoT UEFI disk dropped to GRUB prompt.' >&2; exit 1; fi
+      - name: Cleanup NBD
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
