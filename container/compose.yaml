@@ -14,8 +14,8 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      - /run/kingai:uid=999,gid=995,mode=0755
-      - /tmp
+      - /run/kingai:mode=1777
+      - /tmp:mode=1777
 
 volumes:
   kingai-state:
