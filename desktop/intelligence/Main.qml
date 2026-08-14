@@ -16,23 +16,32 @@ ApplicationWindow {
     property string selectedCenter: "home"
     property string runtimeHealth: "offline"
     property string version: "—"
+    property string policyMode: "—"
     property int registeredAgents: 0
     property int activeTasks: 0
+    property int runningTasks: 0
+    property int waitingTasks: 0
+    property int waitingApprovalTasks: 0
+    property int blockedTasks: 0
+    property int pausedTasks: 0
+    property int planningTasks: 0
     property int pendingApprovals: 0
     property int modelProviders: 0
     property string modelMode: "—"
+    property string modelStrategy: "—"
     property string memoryMode: "—"
+    property bool cloudRequired: false
     property string updatedAt: "—"
 
     readonly property var centers: [
         { id: "home", label: "Home", glyph: "⌂", title: "Intelligence Home", note: "Your governed local AI workspace.", detail: "See runtime health, active work and the system surfaces that need your attention." },
         { id: "agents", label: "Agents", glyph: "A", title: "Agent Center", note: "Identity before authority.", detail: "KINGAI agents operate through named identities and capability policy. Privileged roles remain separated from ordinary agents." },
-        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "Track active work and task lifecycle without bypassing approval, capability or audit controls." },
-        { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. This surface never creates a global allow-everything shortcut." },
-        { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "Memory is owned, sensitivity-aware and governed. Content is not exposed through the public desktop status channel." },
-        { id: "models", label: "Models", glyph: "◈", title: "Model Center", note: "One fabric across local and remote providers.", detail: "Model selection respects capability, privacy and offline constraints instead of treating them as cosmetic toggles." },
-        { id: "automations", label: "Automations", glyph: "↻", title: "Automation Center", note: "Repeatable intelligence with visible control.", detail: "Automation surfaces are being connected to the same Task, Policy, Approval and Audit contracts as interactive work." },
-        { id: "health", label: "System Health", glyph: "+", title: "System Health", note: "Understand before repairing.", detail: "Desktop health uses sanitized runtime state. Repair and privileged actions remain behind the governed CLI/runtime path." }
+        { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts for local tasks without exposing task goals, targets or results through the public desktop channel." },
+        { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. The overview exposes only pending counts; decisions remain behind the governed runtime path." },
+        { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "Memory is owned, sensitivity-aware and governed. Content is never exposed through the public desktop status channel." },
+        { id: "models", label: "Models", glyph: "◈", title: "Model Center", note: "One fabric across local and remote providers.", detail: "Model status reflects configured provider count and routing mode while private credentials remain outside the desktop overview." },
+        { id: "automations", label: "Automations", glyph: "↻", title: "Automation Center", note: "Repeatable intelligence with visible control.", detail: "Automation work shares the same Task, Policy, Approval and Audit contracts. Current overview uses task lifecycle state as its safe activity signal." },
+        { id: "health", label: "System Health", glyph: "+", title: "System Health", note: "Understand before repairing.", detail: "Health shows sanitized runtime, policy and dependency posture. Repair and privileged actions remain governed separately." }
     ]
 
     function centerById(id) {
@@ -64,6 +73,83 @@ ApplicationWindow {
         }
     }
 
+    function metricsForCenter(center) {
+        switch (center) {
+        case "tasks":
+            return [
+                { label: "Active", value: String(activeTasks), note: "non-terminal" },
+                { label: "Running", value: String(runningTasks), note: "executing now" },
+                { label: "Waiting", value: String(waitingTasks + waitingApprovalTasks), note: waitingApprovalTasks > 0 ? String(waitingApprovalTasks) + " need approval" : "queued / dependent" },
+                { label: "Blocked", value: String(blockedTasks), note: blockedTasks > 0 ? "needs attention" : "clear" }
+            ]
+        case "approvals":
+            return [
+                { label: "Pending", value: String(pendingApprovals), note: pendingApprovals > 0 ? "owner decision needed" : "clear" },
+                { label: "Tasks waiting", value: String(waitingApprovalTasks), note: "waiting approval" },
+                { label: "Running", value: String(runningTasks), note: "already authorized" },
+                { label: "Policy", value: policyMode, note: "governed" }
+            ]
+        case "memory":
+            return [
+                { label: "Mode", value: memoryMode, note: "local memory posture" },
+                { label: "Content", value: "Private", note: "not published here" },
+                { label: "Cloud required", value: cloudRequired ? "Yes" : "No", note: cloudRequired ? "dependency present" : "local-first" },
+                { label: "Runtime", value: runtimeHealth === "ok" ? "Healthy" : "Offline", note: version }
+            ]
+        case "models":
+            return [
+                { label: "Providers", value: modelProviders > 0 ? String(modelProviders) : "—", note: modelProviders > 0 ? "configured" : "not configured" },
+                { label: "Mode", value: modelMode, note: "routing default" },
+                { label: "Strategy", value: modelStrategy, note: "provider policy" },
+                { label: "Cloud required", value: cloudRequired ? "Yes" : "No", note: cloudRequired ? "dependency present" : "offline-capable core" }
+            ]
+        case "automations":
+            return [
+                { label: "Active work", value: String(activeTasks), note: "task-backed activity" },
+                { label: "Planning", value: String(planningTasks), note: "preparing execution" },
+                { label: "Paused", value: String(pausedTasks), note: "held by user/system" },
+                { label: "Blocked", value: String(blockedTasks), note: blockedTasks > 0 ? "needs attention" : "clear" }
+            ]
+        case "health":
+            return [
+                { label: "Runtime", value: runtimeHealth === "ok" ? "Healthy" : "Offline", note: version },
+                { label: "Policy", value: policyMode, note: "authority control" },
+                { label: "Blocked tasks", value: String(blockedTasks), note: blockedTasks > 0 ? "investigate" : "clear" },
+                { label: "Cloud required", value: cloudRequired ? "Yes" : "No", note: cloudRequired ? "external dependency" : "local survival path" }
+            ]
+        case "agents":
+            return [
+                { label: "Agents", value: String(registeredAgents), note: "registered identities" },
+                { label: "Active tasks", value: String(activeTasks), note: "shared workload" },
+                { label: "Approvals", value: String(pendingApprovals), note: pendingApprovals > 0 ? "pending authority" : "clear" },
+                { label: "Policy", value: policyMode, note: "identity-bound" }
+            ]
+        default:
+            return [
+                { label: "Agents", value: String(registeredAgents), note: "registered" },
+                { label: "Tasks", value: String(activeTasks), note: "active" },
+                { label: "Approvals", value: String(pendingApprovals), note: pendingApprovals > 0 ? "need attention" : "clear" },
+                { label: "Models", value: modelProviders > 0 ? String(modelProviders) : "—", note: modelProviders > 0 ? modelMode : "not configured" }
+            ]
+        }
+    }
+
+    function stateSummary() {
+        if (selectedCenter === "tasks" || selectedCenter === "automations") {
+            return "Running " + runningTasks + "  ·  Planning " + planningTasks + "  ·  Waiting " + waitingTasks + "  ·  Approval " + waitingApprovalTasks + "  ·  Paused " + pausedTasks + "  ·  Blocked " + blockedTasks
+        }
+        if (selectedCenter === "models") {
+            return modelProviders > 0 ? (modelProviders + " provider(s) · " + modelMode + " · " + modelStrategy) : "No model providers configured yet. The governed OS core remains available without publishing provider credentials."
+        }
+        if (selectedCenter === "approvals") {
+            return pendingApprovals > 0 ? (pendingApprovals + " approval request(s) are pending. Open a governed approval client to inspect scope and decide.") : "No pending approval requests in the sanitized status snapshot."
+        }
+        if (selectedCenter === "health") {
+            return "Runtime " + runtimeHealth + " · Policy " + policyMode + " · Cloud required " + (cloudRequired ? "yes" : "no")
+        }
+        return "Memory " + memoryMode + " · Models " + modelMode + " · Policy " + policyMode
+    }
+
     Component.onCompleted: parseArguments()
 
     Rectangle {
@@ -84,18 +170,8 @@ ApplicationWindow {
                     anchors.margins: 18
                     spacing: 10
 
-                    Label {
-                        text: "KINGAI"
-                        color: "white"
-                        font.pixelSize: 23
-                        font.bold: true
-                    }
-                    Label {
-                        text: "INTELLIGENCE"
-                        color: "#8793a3"
-                        font.pixelSize: 10
-                        font.letterSpacing: 2
-                    }
+                    Label { text: "KINGAI"; color: "white"; font.pixelSize: 23; font.bold: true }
+                    Label { text: "INTELLIGENCE"; color: "#8793a3"; font.pixelSize: 10; font.letterSpacing: 2 }
                     Item { Layout.preferredHeight: 10 }
 
                     Repeater {
@@ -118,11 +194,7 @@ ApplicationWindow {
                         color: runtimeHealth === "ok" ? "#72d58a" : "#e58a85"
                         font.pixelSize: 11
                     }
-                    Label {
-                        text: version
-                        color: "#6f7885"
-                        font.pixelSize: 10
-                    }
+                    Label { text: version; color: "#6f7885"; font.pixelSize: 10 }
                 }
             }
 
@@ -145,17 +217,8 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
-                            Label {
-                                text: root.centerById(root.selectedCenter).title
-                                color: "white"
-                                font.pixelSize: 30
-                                font.bold: true
-                            }
-                            Label {
-                                text: root.centerById(root.selectedCenter).note
-                                color: "#9da7b4"
-                                font.pixelSize: 14
-                            }
+                            Label { text: root.centerById(root.selectedCenter).title; color: "white"; font.pixelSize: 30; font.bold: true }
+                            Label { text: root.centerById(root.selectedCenter).note; color: "#9da7b4"; font.pixelSize: 14 }
                         }
                         Rectangle {
                             implicitWidth: 112
@@ -191,12 +254,7 @@ ApplicationWindow {
                         rowSpacing: 12
 
                         Repeater {
-                            model: [
-                                { label: "Agents", value: String(root.registeredAgents), note: "registered" },
-                                { label: "Tasks", value: String(root.activeTasks), note: "active" },
-                                { label: "Approvals", value: String(root.pendingApprovals), note: root.pendingApprovals > 0 ? "need attention" : "clear" },
-                                { label: "Models", value: root.modelProviders > 0 ? String(root.modelProviders) : "—", note: root.modelProviders > 0 ? root.modelMode : "not configured" }
-                            ]
+                            model: root.metricsForCenter(root.selectedCenter)
                             delegate: Rectangle {
                                 required property var modelData
                                 Layout.fillWidth: true
@@ -209,8 +267,8 @@ ApplicationWindow {
                                     anchors.margins: 15
                                     Label { text: modelData.label; color: "#8994a2"; font.pixelSize: 11 }
                                     Item { Layout.fillHeight: true }
-                                    Label { text: modelData.value; color: "white"; font.pixelSize: 25; font.bold: true }
-                                    Label { text: modelData.note; color: "#747e8a"; font.pixelSize: 10 }
+                                    Label { text: modelData.value; color: "white"; font.pixelSize: modelData.value.length > 12 ? 16 : 25; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    Label { text: modelData.note; color: "#747e8a"; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
                                 }
                             }
                         }
@@ -257,20 +315,20 @@ ApplicationWindow {
                                     anchors.margins: 14
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        Label { text: "Memory mode"; color: "#7f8995"; font.pixelSize: 10 }
-                                        Label { text: root.memoryMode; color: "white"; font.pixelSize: 13; font.bold: true }
+                                        Label { text: "Safe status summary"; color: "#7f8995"; font.pixelSize: 10 }
+                                        Label { text: root.stateSummary(); color: "white"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
                                     }
                                     ColumnLayout {
-                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 230
                                         Label { text: "Last status update"; color: "#7f8995"; font.pixelSize: 10 }
-                                        Label { text: root.updatedAt; color: "white"; font.pixelSize: 12 }
+                                        Label { text: root.updatedAt; color: "white"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
                                     }
                                 }
                             }
 
                             Label {
                                 Layout.fillWidth: true
-                                text: "Privacy boundary: this desktop shell reads aggregate status only. Prompt text, task goals, approval targets, secrets and memory content are never read from the public status channel."
+                                text: "Privacy boundary: this desktop shell reads aggregate status only. Prompt text, task goals, approval targets, secrets, credentials and memory content are never read from the public status channel."
                                 color: "#78828e"
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
@@ -296,12 +354,21 @@ ApplicationWindow {
                 var s = JSON.parse(xhr.responseText)
                 root.runtimeHealth = s.health || "offline"
                 root.version = s.version || "—"
+                root.policyMode = s.policy || "—"
                 root.registeredAgents = s.registered_agents || 0
                 root.activeTasks = s.active_tasks || 0
+                root.runningTasks = s.running_tasks || 0
+                root.waitingTasks = s.waiting_tasks || 0
+                root.waitingApprovalTasks = s.waiting_approval_tasks || 0
+                root.blockedTasks = s.blocked_tasks || 0
+                root.pausedTasks = s.paused_tasks || 0
+                root.planningTasks = s.planning_tasks || 0
                 root.pendingApprovals = s.pending_approvals || 0
                 root.modelProviders = s.model_providers || 0
                 root.modelMode = s.model_mode || "—"
+                root.modelStrategy = s.model_strategy || "—"
                 root.memoryMode = s.memory_mode || "—"
+                root.cloudRequired = s.cloud_required === true
                 root.updatedAt = s.updated_at || "—"
             } catch (e) {
                 root.runtimeHealth = "offline"
