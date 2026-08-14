@@ -2,6 +2,8 @@ package executor
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,12 @@ var (
 	ErrInvalidRequest     = errors.New("invalid execution request")
 )
 
+const (
+	MaxAgentBytes     = 128
+	MaxTargetBytes    = 4096
+	MaxArgumentsBytes = 32 << 10
+)
+
 type Request struct {
 	Agent      string          `json:"agent"`
 	Capability string          `json:"capability"`
@@ -23,13 +31,16 @@ type Request struct {
 }
 
 type Result struct {
-	Capability string          `json:"capability"`
-	Target     string          `json:"target,omitempty"`
-	OK         bool            `json:"ok"`
-	Data       json.RawMessage `json:"data,omitempty"`
-	Message    string          `json:"message,omitempty"`
-	StartedAt  time.Time       `json:"started_at"`
-	FinishedAt time.Time       `json:"finished_at"`
+	ExecutionID string          `json:"execution_id"`
+	Agent       string          `json:"agent"`
+	Capability  string          `json:"capability"`
+	Target      string          `json:"target,omitempty"`
+	OK          bool            `json:"ok"`
+	Data        json.RawMessage `json:"data,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	StartedAt   time.Time       `json:"started_at"`
+	FinishedAt  time.Time       `json:"finished_at"`
+	DurationMS  int64           `json:"duration_ms"`
 }
 
 type Handler interface {
@@ -43,9 +54,9 @@ func (f HandlerFunc) Execute(ctx context.Context, req Request) (Result, error) {
 }
 
 type Broker struct {
-	mu      sync.RWMutex
+	mu       sync.RWMutex
 	handlers map[string]Handler
-	timeout time.Duration
+	timeout  time.Duration
 }
 
 func New(timeout time.Duration) *Broker {
@@ -92,7 +103,9 @@ func (b *Broker) Capabilities() []string {
 func (b *Broker) Execute(ctx context.Context, req Request) (Result, error) {
 	req.Agent = strings.TrimSpace(req.Agent)
 	req.Capability = strings.TrimSpace(req.Capability)
-	if req.Agent == "" || !validCapability(req.Capability) || strings.ContainsRune(req.Target, '\x00') {
+	if req.Agent == "" || len(req.Agent) > MaxAgentBytes ||
+		!validCapability(req.Capability) || len(req.Target) > MaxTargetBytes ||
+		strings.ContainsRune(req.Target, '\x00') || len(req.Arguments) > MaxArgumentsBytes {
 		return Result{}, ErrInvalidRequest
 	}
 	if len(req.Arguments) > 0 && !json.Valid(req.Arguments) {
@@ -106,11 +119,17 @@ func (b *Broker) Execute(ctx context.Context, req Request) (Result, error) {
 		return Result{}, ErrUnknownCapability
 	}
 
+	executionID, err := newExecutionID()
+	if err != nil {
+		return Result{}, fmt.Errorf("create execution id: %w", err)
+	}
 	execCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
 	started := time.Now().UTC()
-	result, err := handler.Execute(execCtx, req)
+	result, execErr := handler.Execute(execCtx, req)
 	finished := time.Now().UTC()
+	result.ExecutionID = executionID
+	result.Agent = req.Agent
 	if result.Capability == "" {
 		result.Capability = req.Capability
 	}
@@ -123,12 +142,21 @@ func (b *Broker) Execute(ctx context.Context, req Request) (Result, error) {
 	if result.FinishedAt.IsZero() {
 		result.FinishedAt = finished
 	}
-	if err != nil {
+	result.DurationMS = finished.Sub(started).Milliseconds()
+	if execErr != nil {
 		result.OK = false
-		return result, err
+		return result, execErr
 	}
 	result.OK = true
 	return result, nil
+}
+
+func newExecutionID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw[:]), nil
 }
 
 func validCapability(v string) bool {
