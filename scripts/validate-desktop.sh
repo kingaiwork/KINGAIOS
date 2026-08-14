@@ -10,6 +10,19 @@ cd "$ROOT"
 [[ ! -d desktop/profiles ]] || { echo "desktop/profiles is legacy terminology; use desktop/experiences" >&2; exit 1; }
 [[ -d desktop/experiences ]] || { echo "missing desktop/experiences" >&2; exit 1; }
 
+for path in \
+  desktop/intelligence/Main.qml \
+  desktop/intelligence/launch.sh \
+  distro/overlay/usr/share/applications/kingai-intelligence.desktop \
+  distro/overlay/etc/xdg/mimeapps.list; do
+  [[ -f "$path" ]] || { echo "missing Desktop Phase 2 asset: $path" >&2; exit 1; }
+done
+
+bash -n desktop/intelligence/launch.sh
+
+grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
+grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
+
 python3 - <<'PY'
 import json
 from pathlib import Path
@@ -75,6 +88,21 @@ profile = Path("profiles/desktop.yaml").read_text()
 for required in ("profile: desktop", "edition_role: personal-computer", "kingai-intelligence", "kingai-flow", "kingai-classic"):
     if required not in profile:
         raise SystemExit(f"profiles/desktop.yaml missing required contract token: {required}")
+
+shell = Path("desktop/intelligence/Main.qml").read_text()
+for center in ("home", "agents", "tasks", "approvals", "memory", "models", "automations", "health"):
+    if f'id: "{center}"' not in shell:
+        raise SystemExit(f"KINGAI Intelligence shell missing center: {center}")
+if 'file:///run/kingai/public-status.json' not in shell:
+    raise SystemExit("KINGAI Intelligence shell must use the sanitized public runtime status channel")
+for forbidden in ("/v1/memory/list", "/v1/approval/list", "/v1/tasks/list", "api_key", "password", "secret"):
+    if forbidden.lower() in shell.lower():
+        raise SystemExit(f"KINGAI Intelligence public shell contains forbidden direct/sensitive token: {forbidden}")
+
+launcher = Path("distro/overlay/usr/share/applications/kingai-intelligence.desktop").read_text()
+for action in ("Agents", "Tasks", "Approvals", "Memory", "Models", "Automations", "Health"):
+    if f"[Desktop Action {action}]" not in launcher:
+        raise SystemExit(f"KINGAI Intelligence launcher missing desktop action: {action}")
 PY
 
 echo "KINGAI OS Desktop contract: OK"
