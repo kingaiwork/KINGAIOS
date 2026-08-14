@@ -120,7 +120,7 @@ jobs:
           sudo test -f "$root/usr/share/doc/kingai-os/IOT-HANDLER-PROTOCOL.md"
           sudo test -f "$root/usr/lib/tmpfiles.d/kingai-iot.conf"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$root/usr/lib/systemd/system/kingaid.service"
-          grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=16$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_RUNTIME_ENABLED=true$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_IDENTITY=/etc/kingai/device.json$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
