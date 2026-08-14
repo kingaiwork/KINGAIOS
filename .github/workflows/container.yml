@@ -3,6 +3,7 @@ name: KINGAI OS Container
 on:
   pull_request:
     paths:
+      - .github/workflows/container.yml
       - container/**
       - profiles/container.yaml
       - scripts/build-container.sh
