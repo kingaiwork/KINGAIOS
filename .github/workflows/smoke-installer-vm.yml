@@ -34,8 +34,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -60,7 +60,7 @@ jobs:
         run: |
           root=dist/rootfs-server-amd64
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
-          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage grub-editenv; do sudo chroot "$root" sh -c "command -v $tool >/dev/null"; done
+          for tool in sgdisk partprobe mkfs.vfat mkfs.ext4 cryptsetup rsync grub-install grub-mkimage grub-editenv findmnt; do sudo chroot "$root" sh -c "command -v $tool >/dev/null"; done
       - name: Add installed-system readiness and safe-repair marker
         shell: bash
         run: |
@@ -69,7 +69,14 @@ jobs:
           #!/bin/sh
           set -eu
           mountpoint -q /var/lib/kingai-state
+          mountpoint -q /var/lib/kingai
+          mountpoint -q /var/log/kingai
           test -e /dev/mapper/KINGAI_STATE
+          findmnt -rn -T /var/lib/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          findmnt -rn -T /var/log/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          test -f /var/lib/kingai-state/kingai/runtime/.layout-v1-ready
+          grep -Fq 'origin=fresh-install' /var/lib/kingai-state/kingai/runtime/.layout-v1-ready
+          test "$(stat -c '%a' /var/lib/kingai-state/kingai/runtime/.layout-v1-ready)" = 600
           test "$(stat -c '%a' /etc/kingai/update/root.json)" = 666
           systemctl start kingai-health-scan.service
           test -s /var/lib/kingai/health/latest.json
@@ -77,6 +84,10 @@ jobs:
           grep -Fq '"product": "KINGAI OS"' /var/lib/kingai/health/latest.json
           grep -Fq '"action_id": "tuf.harden-root-permissions"' /var/lib/kingai/health/latest.json
           grep -Fq '"status": "applied"' /var/lib/kingai/health/latest.json
+          echo fresh-install-persistence > /var/lib/kingai/fresh-install-persistence.txt
+          sync
+          test "$(cat /var/lib/kingai-state/kingai/runtime/lib/fresh-install-persistence.txt)" = fresh-install-persistence
+          echo KINGAI_ENCRYPTED_RUNTIME_STATE_OK > /dev/ttyS0
           echo KINGAI_SAFE_AUTO_REPAIR_OK > /dev/ttyS0
           echo KINGAI_HEALTH_SNAPSHOT_OK > /dev/ttyS0
           echo KINGAI_INSTALLED_BOOT_OK > /dev/ttyS0
@@ -121,11 +132,22 @@ jobs:
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
           sudo cryptsetup isLuks /dev/nbd0p4
-          mkdir -p ci/check-root ci/check-efi
+          mkdir -p ci/check-root ci/check-efi ci/check-state
           sudo mount /dev/nbd0p2 ci/check-root
           sudo mount /dev/nbd0p1 ci/check-efi
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 KINGAI_STATE_OFFLINE
+          sudo mount /dev/mapper/KINGAI_STATE_OFFLINE ci/check-state
           grep -q '^NAME="KINGAI OS"' ci/check-root/usr/lib/os-release
           grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
+          grep -Fq '/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults 0 2' ci/check-root/etc/fstab
+          grep -Fq '/var/lib/kingai-state/kingai/runtime/lib /var/lib/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state' ci/check-root/etc/fstab
+          grep -Fq '/var/lib/kingai-state/kingai/runtime/log /var/log/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state' ci/check-root/etc/fstab
+          if grep -Fq 'KINGAI_STATE /var/lib/kingai-state ext4 defaults,nofail' ci/check-root/etc/fstab; then
+            echo 'fresh install contains legacy optional encrypted STATE mount' >&2
+            exit 1
+          fi
+          sudo test -f ci/check-state/kingai/runtime/.layout-v1-ready
+          sudo grep -Fq 'origin=fresh-install' ci/check-state/kingai/runtime/.layout-v1-ready
           test -f ci/check-root/etc/kingai/state-test.key
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/state-test.key)" = 600
           test "$(sudo stat -c '%a' ci/check-root/etc/kingai/update/root.json)" = 666
@@ -141,6 +163,8 @@ jobs:
           grep -q '^kingai_active=A$' ci/initial-grubenv.txt
           test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
           test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
+          sudo umount ci/check-state
+          sudo cryptsetup close KINGAI_STATE_OFFLINE
           sudo umount ci/check-efi
           sudo umount ci/check-root
       - name: Disconnect installer target
@@ -160,6 +184,7 @@ jobs:
           set -e
           cat ci/qemu-installed.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_ENCRYPTED_RUNTIME_STATE_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_SAFE_AUTO_REPAIR_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_HEALTH_SNAPSHOT_OK' ci/qemu-installed.log
           grep -Fq 'KINGAI_INSTALLED_BOOT_OK' ci/qemu-installed.log
@@ -169,6 +194,7 @@ jobs:
       - name: Cleanup NBD
         if: always()
         run: |
-          mount | awk '$3 ~ /ci\/check-(root|efi)$/ {print $3}' | xargs -r sudo umount || true
+          mount | awk '$3 ~ /ci\/check-(root|efi|state)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE_OFFLINE 2>/dev/null || true
           sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
           sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
