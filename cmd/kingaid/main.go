@@ -20,6 +20,7 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/agent"
 	"github.com/kingaiwork/KINGAIOS/internal/approval"
 	"github.com/kingaiwork/KINGAIOS/internal/audit"
+	"github.com/kingaiwork/KINGAIOS/internal/executor"
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/model"
 	"github.com/kingaiwork/KINGAIOS/internal/policy"
@@ -46,6 +47,14 @@ type policyEvaluateRequest struct {
 	Capability string `json:"capability"`
 	Target     string `json:"target,omitempty"`
 	ApprovalID string `json:"approval_id,omitempty"`
+}
+
+type executionRequest struct {
+	Agent      string          `json:"agent"`
+	Capability string          `json:"capability"`
+	Target     string          `json:"target,omitempty"`
+	ApprovalID string          `json:"approval_id,omitempty"`
+	Arguments  json.RawMessage `json:"arguments,omitempty"`
 }
 
 type approvalRequest struct {
@@ -78,10 +87,18 @@ type taskCreateRequest struct {
 }
 
 type taskTransitionRequest struct {
-	ID     string          `json:"id"`
+	ID     string           `json:"id"`
 	Status taskgraph.Status `json:"status"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  string          `json:"error,omitempty"`
+	Result json.RawMessage  `json:"result,omitempty"`
+	Error  string           `json:"error,omitempty"`
+}
+
+type taskStepTransitionRequest struct {
+	ID     string           `json:"id"`
+	StepID string           `json:"step_id"`
+	Status taskgraph.Status `json:"status"`
+	Result json.RawMessage  `json:"result,omitempty"`
+	Error  string           `json:"error,omitempty"`
 }
 
 func main() {
@@ -94,6 +111,7 @@ func main() {
 	approvalRoot := getenv("KINGAI_APPROVAL_ROOT", "/var/lib/kingai/approvals")
 	memoryRoot := getenv("KINGAI_MEMORY_ROOT", "/var/lib/kingai/memory")
 	taskRoot := getenv("KINGAI_TASK_ROOT", "/var/lib/kingai/tasks")
+	execdSocket := getenv("KINGAI_EXECD_SOCKET", "/run/kingai-execd/execd.sock")
 
 	p := policy.Default()
 	if loaded, err := policy.Load(policyPath); err == nil {
@@ -112,6 +130,7 @@ func main() {
 	approvalStore := approval.Store{Root: approvalRoot}
 	memoryStore := memory.FileStore{Root: memoryRoot}
 	taskStore := taskgraph.Store{Root: taskRoot}
+	execClient := executor.Client{Socket: execdSocket, Timeout: 35 * time.Second}
 
 	if err := os.MkdirAll(filepath.Dir(socket), 0o755); err != nil { log.Fatal(err) }
 	_ = os.Remove(socket)
@@ -150,9 +169,13 @@ func main() {
 	})
 	mux.HandleFunc("/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		execState := "offline"
+		healthCtx, cancel := context.WithTimeout(r.Context(), 150*time.Millisecond)
+		if execClient.Health(healthCtx) == nil { execState = "ready" }
+		cancel()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true,
-			"policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "memory_service": "enabled", "model_router": "enabled",
+			"policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "memory_service": "enabled", "model_router": "enabled", "execution_broker": execState,
 			"agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode,
 			"model_candidates": len(modelCfg.Providers), "audit": "enabled", "version": version,
 		})
@@ -163,31 +186,31 @@ func main() {
 		var in policyEvaluateRequest
 		if !decodeJSON(w, r, 64<<10, &in) { return }
 		uid := peerUID(r.Context())
-		pReq := policy.Request{Agent: in.Agent, Capability: in.Capability, Target: in.Target, Owner: uid == 0}
-		var res policy.Result
-		if uid == invalidUID() {
-			res = policy.Result{Reason: "unable to establish local peer identity"}
-		} else if !agentIdentityAllowed(in.Agent, usernameForUID(uid), uid) {
-			res = policy.Result{Reason: "agent identity is not authorized for this local peer"}
-		} else if !registry.Has(in.Agent) {
-			res = policy.Result{Reason: "unknown agent: default deny"}
-		} else if !registry.Allows(in.Agent, in.Capability) {
-			res = policy.Result{Reason: "capability not declared by agent manifest"}
-		} else {
-			res = p.Evaluate(pReq)
-			if in.ApprovalID != "" && res.ApprovalRequired {
-				if _, err := approvalStore.Consume(in.ApprovalID, in.Agent, in.Capability, audit.HashTarget(in.Target), uid); err == nil {
-					pReq.Approved = true
-					res = p.Evaluate(pReq)
-				} else {
-					res.Allowed = false
-					res.ApprovalRequired = true
-					res.Reason = "approval token rejected"
-				}
-			}
-		}
+		res := evaluatePolicy(p, registry, approvalStore, in.Agent, in.Capability, in.Target, in.ApprovalID, uid)
 		appendAudit(auditPath, audit.Event{Type: "policy.evaluate", Agent: in.Agent, Capability: in.Capability, Allowed: res.Allowed, ApprovalRequired: res.ApprovalRequired, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: res.Reason})
 		writeJSON(w, http.StatusOK, res)
+	})
+
+	mux.HandleFunc("/v1/execution/run", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		var in executionRequest
+		if !decodeJSON(w, r, 128<<10, &in) { return }
+		uid := peerUID(r.Context())
+		res := evaluatePolicy(p, registry, approvalStore, in.Agent, in.Capability, in.Target, in.ApprovalID, uid)
+		if !res.Allowed {
+			appendAudit(auditPath, audit.Event{Type: "execution.denied", Agent: in.Agent, Capability: in.Capability, Allowed: false, ApprovalRequired: res.ApprovalRequired, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: res.Reason})
+			writeJSON(w, http.StatusForbidden, res)
+			return
+		}
+		if len(in.Arguments) > 0 && !json.Valid(in.Arguments) { http.Error(w, "arguments must be valid JSON", http.StatusBadRequest); return }
+		result, err := execClient.Execute(r.Context(), executor.Request{Agent: in.Agent, Capability: in.Capability, Target: in.Target, Arguments: in.Arguments})
+		if err != nil {
+			appendAudit(auditPath, audit.Event{Type: "execution.dispatch", Agent: in.Agent, Capability: in.Capability, Allowed: false, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: err.Error()})
+			writeJSON(w, http.StatusBadGateway, result)
+			return
+		}
+		appendAudit(auditPath, audit.Event{Type: "execution.dispatch", Agent: in.Agent, Capability: in.Capability, Allowed: true, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: "executed by constrained broker"})
+		writeJSON(w, http.StatusOK, result)
 	})
 
 	mux.HandleFunc("/v1/approval/request", func(w http.ResponseWriter, r *http.Request) {
@@ -311,6 +334,18 @@ func main() {
 		writeJSON(w, http.StatusOK, task)
 	})
 
+	mux.HandleFunc("/v1/tasks/step/transition", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		uid := peerUID(r.Context())
+		if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
+		var in taskStepTransitionRequest
+		if !decodeJSON(w, r, 128<<10, &in) { return }
+		task, err := taskStore.TransitionStepForPeer(in.ID, uid, in.StepID, in.Status, in.Result, in.Error)
+		if err != nil { http.Error(w, err.Error(), http.StatusConflict); return }
+		appendAudit(auditPath, audit.Event{Type: "task.step.transition", Agent: task.Agent, Allowed: true, PeerUID: uid, Reason: in.StepID + ":" + string(in.Status)})
+		writeJSON(w, http.StatusOK, task)
+	})
+
 	srv := &http.Server{
 		Handler: mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -327,6 +362,26 @@ func main() {
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdown)
+}
+
+func evaluatePolicy(p policy.Policy, registry agent.Registry, approvals approval.Store, agentID, capability, target, approvalID string, uid uint32) policy.Result {
+	pReq := policy.Request{Agent: agentID, Capability: capability, Target: target, Owner: uid == 0}
+	if uid == invalidUID() { return policy.Result{Reason: "unable to establish local peer identity"} }
+	if !agentIdentityAllowed(agentID, usernameForUID(uid), uid) { return policy.Result{Reason: "agent identity is not authorized for this local peer"} }
+	if !registry.Has(agentID) { return policy.Result{Reason: "unknown agent: default deny"} }
+	if !registry.Allows(agentID, capability) { return policy.Result{Reason: "capability not declared by agent manifest"} }
+	res := p.Evaluate(pReq)
+	if approvalID != "" && res.ApprovalRequired {
+		if _, err := approvals.Consume(approvalID, agentID, capability, audit.HashTarget(target), uid); err == nil {
+			pReq.Approved = true
+			res = p.Evaluate(pReq)
+		} else {
+			res.Allowed = false
+			res.ApprovalRequired = true
+			res.Reason = "approval token rejected"
+		}
+	}
+	return res
 }
 
 func loadModelConfig(path string) modelConfig {
