@@ -15,9 +15,10 @@
   "recovery_vm": true,
   "tuf_client": true,
   "secure_boot_vm": true,
-  "iot_edge_runtime_ci": false,
-  "iot_device_pack_crypto_ci": false,
-  "iot_edge_ota_targeting_ci": false,
+  "iot_edge_runtime_ci": true,
+  "iot_device_pack_crypto_ci": true,
+  "iot_edge_ota_targeting_ci": true,
+  "iot_generic_uefi_amd64_vm": true,
   "iot_hardware_hil": false,
   "iot_arm64_ab_update_hil": false,
   "tuf_repository": false,
@@ -26,5 +27,5 @@
   "rollback_drill": true,
   "recovery_drill": true,
   "r2_delivery": false,
-  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container runtime smoke covers fixed non-root UID/GID, PID 1 kingaid, no management TCP listener, Policy/Approval/Task/Memory/Model/Audit surfaces and persistent Memory/Task state. Container CI additionally gates fixable CRITICAL vulnerabilities and validates linux/amd64 + linux/arm64 OCI output. A beta/RC GHCR release pipeline now generates BuildKit SBOM/provenance, CycloneDX SBOM, GitHub attestations and Sigstore/Cosign keyless signatures with verification. No signed Container Beta has been published yet, and stable releases remain blocked while production_signing_ready=false. Server/Desktop boot foundations, installer, Recovery, Secure Boot, pinned-root TUF HTTPS tamper rejection and A/B rollback evidence remain verified. IoT / Edge now has a governed non-root Device Broker, trusted device identity, detached Ed25519 Device Pack verification, immutable artifact SHA-256 verification, physical risk floors, Edge Handler SDK, signed OTA target compatibility and explicit platform/HIL release metadata. The new IoT software gates remain false until this PR's current CI head passes. Real hardware HIL and ARM64 board-specific A/B flashing remain false until physical boot, capability, power-loss and rollback evidence exists. Production TUF repository keys, branch governance, production signing and Cloudflare delivery remain protected gates."
+  "notes": "Fail-closed. D5 local runtime CI is verified for policy, approval, memory, model fail-closed behavior, task lifecycle, audit/status and CLI integration. Container runtime smoke covers fixed non-root UID/GID, PID 1 kingaid, no management TCP listener, Policy/Approval/Task/Memory/Model/Audit surfaces and persistent Memory/Task state, including linux/amd64 and linux/arm64 QEMU/Buildx execution. Container CI additionally gates fixable CRITICAL vulnerabilities and validates OCI output. Server/Desktop boot foundations, installer, Recovery, Secure Boot, pinned-root TUF HTTPS tamper rejection and A/B rollback evidence remain verified. IoT / Edge software gates are now verified by a single PR head that passed Foundation CI, both amd64/arm64 IoT Edge smoke jobs, Device Pack Ed25519 and artifact-integrity tests, trusted device identity, physical risk/Approval policy, Handler SDK, Edge OTA target compatibility, Execution Broker, CodeQL, Server/Desktop regressions and Container tests. Generic UEFI amd64 additionally passed a disposable-NBD destructive IoT install with GPT/EFI/ROOT_A/ROOT_B/LUKS STATE/GRUB A-B validation followed by a successful OVMF boot reaching live KINGAI Device Broker readiness. This is VM evidence only. Real hardware HIL, Raspberry Pi/Jetson certification and ARM64 board-specific A/B flashing remain false until physical boot, device capability isolation, thermal/load, power-loss OTA and rollback evidence exists. Production TUF repository keys, branch governance, production signing and Cloudflare delivery remain protected gates."
 }
