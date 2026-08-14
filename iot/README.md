@@ -27,7 +27,7 @@ kingai-recovery
 The IoT drop-in selects the governed Device Broker:
 
 ```text
-KINGAI_REQUIRE_EXECD=false
+KINGAI_REQUIRE_EXECD=true
 KINGAI_TASK_RUN_BUDGET=16
 KINGAI_DEVICE_RUNTIME_ENABLED=true
 KINGAI_DEVICE_IDENTITY=/etc/kingai/device.json
@@ -39,7 +39,7 @@ KINGAI_DEVICE_BROKER_SOCKET=/run/kingai/device-broker.sock
 KINGAI_EXECD_SOCKET=/run/kingai/device-broker.sock
 ```
 
-`KINGAI_EXECD_SOCKET` is only protocol compatibility with the existing constrained execution client. The IoT socket is served by the non-privileged in-process Device Broker; `kingai-execd` is not installed.
+`KINGAI_REQUIRE_EXECD` is a legacy environment name used by the common readiness path; on IoT it means the selected execution broker is required to be healthy, not that the generic privileged ExecD is installed. `KINGAI_EXECD_SOCKET` is likewise protocol compatibility with the existing constrained execution client. The IoT socket is served by the non-privileged in-process Device Broker; `kingai-execd` is not installed. If an installed Device Pack references a board handler that is missing or unhealthy, Device Broker `/healthz` returns unavailable and KINGAI readiness fails instead of reporting a false healthy state.
 
 ## Execution chain
 
@@ -151,7 +151,7 @@ These are **integration templates, not hardware certification**. Current entries
 
 The IoT smoke workflow covers both amd64 and arm64 and checks:
 
-- Device Pack crypto/runtime/risk tests;
+- Device Pack crypto/runtime/risk/handler-health tests;
 - trusted device identity tests;
 - Edge OTA compatibility tests;
 - Agent and central Policy tests;
@@ -159,7 +159,7 @@ The IoT smoke workflow covers both amd64 and arm64 and checks:
 - integration-template machine validation;
 - support-matrix anti-overclaim assertions;
 - rootfs trust-directory ownership/mode;
-- non-root `kingaid` systemd sandboxing;
+- required Device Broker readiness plus non-root `kingaid` systemd sandboxing;
 - absence of generic ExecD/Installer/Recovery;
 - generic image digest and size budget;
 - `bootable:false` and `device_pack_required:true` metadata.
