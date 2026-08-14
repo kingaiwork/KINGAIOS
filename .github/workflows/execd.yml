@@ -50,6 +50,7 @@ jobs:
           tmp=$(mktemp -d)
           socket="$tmp/execd.sock"
           audit="$tmp/execd-audit.jsonl"
+          audit_copy="$tmp/execd-audit-readable.jsonl"
           allowed_user="$(id -un)"
 
           sudo env \
@@ -83,6 +84,10 @@ jobs:
             -d '{"agent":"system-ops","capability":"package.install","target":"curl"}' \
             http://kingai-execd/v1/execute > "$tmp/unknown.json"
 
+          sudo test -s "$audit"
+          test "$(sudo stat -c '%a' "$audit")" = 600
+          sudo cat "$audit" > "$audit_copy"
+
           python3 - "$tmp" <<'PY'
           import json, pathlib, sys
           root = pathlib.Path(sys.argv[1])
@@ -102,7 +107,7 @@ jobs:
           assert unknown['ok'] is False
           assert 'not registered' in unknown['message']
 
-          events = [json.loads(line) for line in (root/'execd-audit.jsonl').read_text().splitlines() if line.strip()]
+          events = [json.loads(line) for line in (root/'execd-audit-readable.jsonl').read_text().splitlines() if line.strip()]
           assert len(events) >= 2
           by_cap = {event.get('capability'): event for event in events}
           assert by_cap['service.restart']['execution_id'] == injection['execution_id']
@@ -110,4 +115,3 @@ jobs:
           PY
 
           test ! -e /tmp/kingai-execd-pwned
-          sudo test -s "$audit"
