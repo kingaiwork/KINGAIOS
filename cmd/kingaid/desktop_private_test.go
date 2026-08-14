@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kingaiwork/KINGAIOS/internal/agent"
 	"github.com/kingaiwork/KINGAIOS/internal/desktopbridge"
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
@@ -17,6 +18,10 @@ func TestDesktopPrivateEndpointIsPeerScopedAndRedacted(t *testing.T) {
 	root := t.TempDir()
 	tasks := taskgraph.Store{Root: root + "/tasks"}
 	memories := memory.FileStore{Root: root + "/memory"}
+	registry := agent.New([]agent.Definition{
+		{ID:"main", Role:"assistant", Capabilities:[]string{"filesystem.read","network.read"}},
+		{ID:"system-ops", Role:"privileged-system", Capabilities:[]string{"filesystem.write","service.restart"}},
+	})
 
 	mine, err := tasks.Create("my private goal", "main", 1000, []taskgraph.Step{{ID:"one", Title:"private step", Capability:"filesystem.write", Target:"/home/me/private", Status:taskgraph.StatusCreated}})
 	if err != nil { t.Fatal(err) }
@@ -25,7 +30,7 @@ func TestDesktopPrivateEndpointIsPeerScopedAndRedacted(t *testing.T) {
 	if _, err := memories.Put("uid-2000", "semantic", "private", json.RawMessage(`{"secret":"other-memory"}`)); err != nil { t.Fatal(err) }
 
 	mux := http.NewServeMux()
-	registerDesktopPrivateHandler(mux, tasks, memories, "0.1-test")
+	registerDesktopPrivateHandler(mux, tasks, memories, "0.1-test", registry)
 	req := httptest.NewRequest(http.MethodGet, "/v1/desktop/private", nil)
 	req = req.WithContext(context.WithValue(req.Context(), peerKey{}, uint32(1000)))
 	w := httptest.NewRecorder()
@@ -38,8 +43,12 @@ func TestDesktopPrivateEndpointIsPeerScopedAndRedacted(t *testing.T) {
 		t.Fatalf("unexpected private snapshot: %#v", snapshot)
 	}
 	if snapshot.Memory.Total != 1 || snapshot.Memory.ByLayer["M4"] != 1 { t.Fatalf("unexpected memory summary: %#v", snapshot.Memory) }
+	if len(snapshot.Agents) != 2 { t.Fatalf("unexpected Agent summaries: %#v", snapshot.Agents) }
+	if snapshot.Agents[0].ID != "main" || !snapshot.Agents[0].Authorized || snapshot.Agents[0].CapabilityCount != 2 { t.Fatalf("unexpected main Agent summary: %#v", snapshot.Agents[0]) }
+	if snapshot.Agents[1].ID != "system-ops" || snapshot.Agents[1].Authorized || snapshot.Agents[1].CapabilityCount != 2 { t.Fatalf("privileged Agent must remain locked for ordinary peer: %#v", snapshot.Agents[1]) }
+
 	text := strings.ToLower(w.Body.String())
-	for _, forbidden := range []string{"other user goal", "private step", "filesystem.write", "/home/me/private", "memory-body", "other-memory", "target", "capability", "data"} {
+	for _, forbidden := range []string{"other user goal", "private step", "filesystem.write", "filesystem.read", "network.read", "service.restart", "/home/me/private", "memory-body", "other-memory", "approval_id", "result"} {
 		if strings.Contains(text, strings.ToLower(forbidden)) { t.Fatalf("desktop endpoint leaked %q: %s", forbidden, text) }
 	}
 }
