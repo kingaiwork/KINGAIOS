@@ -9,6 +9,7 @@ on:
       - profiles/container.yaml
       - scripts/build-container.sh
       - scripts/test-container.sh
+      - scripts/validate-oci-archive.py
       - cmd/kingai/**
       - cmd/kingaid/**
       - internal/**
@@ -25,6 +26,7 @@ on:
       - profiles/container.yaml
       - scripts/build-container.sh
       - scripts/test-container.sh
+      - scripts/validate-oci-archive.py
       - cmd/kingai/**
       - cmd/kingaid/**
       - internal/**
@@ -56,8 +58,32 @@ jobs:
       - name: Build and smoke test hardened amd64 container
         run: bash scripts/test-container.sh
 
-  multiarch:
+  security:
     needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build scan image
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          docker build \
+            --file container/Dockerfile \
+            --build-arg "VERSION=$version" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --tag kingai-os:scan \
+            .
+      - name: Block fixable critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: kingai-os:scan
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+  multiarch:
+    needs: [smoke, security]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -65,7 +91,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Verify multi-architecture image build
+      - name: Build and validate amd64/arm64 OCI archive
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish }}
         run: |
           version=$(tr -d '[:space:]' < VERSION)
@@ -74,8 +100,12 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --build-arg "VERSION=$version" \
             --build-arg "REVISION=$GITHUB_SHA" \
-            --output type=cacheonly \
+            --provenance=false \
+            --output type=oci,dest=/tmp/kingai-os.oci.tar \
             .
+          python3 scripts/validate-oci-archive.py /tmp/kingai-os.oci.tar \
+            --platform linux/amd64 \
+            --platform linux/arm64
       - name: Login to GHCR
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
