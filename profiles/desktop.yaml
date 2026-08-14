@@ -1,5 +1,6 @@
 profile: desktop
 name: KINGAI OS Desktop
+edition_role: personal-computer
 version_source: VERSION
 base:
   lineage: ubuntu-26.04-lts
@@ -7,6 +8,7 @@ base:
     - amd64
 features:
   desktop: true
+  personal_computer: true
   first_run_welcome: true
   desktop_switching: true
   local_ai_runtime: optional
@@ -20,6 +22,8 @@ kingai:
   cli: true
   daemon: true
   policy_engine: true
+  approval_broker: true
+  task_graph: true
   model_fabric: true
   memory_fabric: true
   agent_runtime: true
