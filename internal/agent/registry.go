@@ -19,7 +19,8 @@ type Config struct {
 }
 
 type Registry struct {
-	agents map[string]map[string]struct{}
+	agents      map[string]map[string]struct{}
+	definitions []Definition
 }
 
 func Default() Registry {
@@ -27,14 +28,28 @@ func Default() Registry {
 }
 
 func New(defs []Definition) Registry {
-	r := Registry{agents: make(map[string]map[string]struct{}, len(defs))}
+	r := Registry{agents: make(map[string]map[string]struct{}, len(defs)), definitions: make([]Definition, 0, len(defs))}
+	seen := make(map[string]struct{}, len(defs))
 	for _, d := range defs {
 		if d.ID == "" { continue }
 		caps := make(map[string]struct{}, len(d.Capabilities))
+		cleanCaps := make([]string, 0, len(d.Capabilities))
 		for _, c := range d.Capabilities {
-			if c != "" { caps[c] = struct{}{} }
+			if c == "" { continue }
+			if _, duplicate := caps[c]; duplicate { continue }
+			caps[c] = struct{}{}
+			cleanCaps = append(cleanCaps, c)
 		}
 		r.agents[d.ID] = caps
+		copyDef := Definition{ID: d.ID, Role: d.Role, Capabilities: cleanCaps}
+		if _, duplicate := seen[d.ID]; duplicate {
+			for i := range r.definitions {
+				if r.definitions[i].ID == d.ID { r.definitions[i] = copyDef; break }
+			}
+			continue
+		}
+		seen[d.ID] = struct{}{}
+		r.definitions = append(r.definitions, copyDef)
 	}
 	return r
 }
@@ -63,3 +78,14 @@ func (r Registry) Has(agentID string) bool {
 }
 
 func (r Registry) Count() int { return len(r.agents) }
+
+// Definitions returns a defensive copy suitable for trusted local inspection.
+// Callers still need to apply identity/policy checks before treating an Agent
+// as usable by a specific peer.
+func (r Registry) Definitions() []Definition {
+	out := make([]Definition, 0, len(r.definitions))
+	for _, d := range r.definitions {
+		out = append(out, Definition{ID: d.ID, Role: d.Role, Capabilities: append([]string(nil), d.Capabilities...)})
+	}
+	return out
+}
