@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kingaiwork/KINGAIOS/internal/agent"
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
 )
@@ -22,14 +23,23 @@ type TaskSummary struct {
 	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
+type AgentSummary struct {
+	ID              string `json:"id"`
+	Role            string `json:"role"`
+	CapabilityCount int    `json:"capability_count"`
+	Authorized      bool   `json:"authorized_for_peer"`
+}
+
 // Snapshot is a per-UID desktop payload. It may contain the user's task goal,
 // so it is private rather than world-readable, but it intentionally excludes
-// raw task step targets/capabilities/results and all Memory Data.
+// raw task step targets/capabilities/results, Agent capability names and all
+// Memory record payloads.
 type Snapshot struct {
 	Schema    int            `json:"schema"`
 	Product   string         `json:"product"`
 	Version   string         `json:"version"`
 	UserUID   uint32         `json:"user_uid"`
+	Agents    []AgentSummary `json:"agents"`
 	Tasks     []TaskSummary  `json:"tasks"`
 	Memory    memory.Summary `json:"memory"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -46,10 +56,32 @@ func Build(userUID uint32, version string, tasks []taskgraph.Task, memorySummary
 		Product:   "KINGAI OS Desktop",
 		Version:   strings.TrimSpace(version),
 		UserUID:   userUID,
+		Agents:    []AgentSummary{},
 		Tasks:     summarizeTasks(tasks),
 		Memory:    memorySummary,
 		UpdatedAt: now,
 	}
+}
+
+func SummarizeAgents(definitions []agent.Definition, authorized func(string) bool) []AgentSummary {
+	out := make([]AgentSummary, 0, len(definitions))
+	for _, definition := range definitions {
+		id := truncate(strings.TrimSpace(definition.ID), 64)
+		if id == "" {
+			continue
+		}
+		allowed := false
+		if authorized != nil {
+			allowed = authorized(definition.ID)
+		}
+		out = append(out, AgentSummary{
+			ID:              id,
+			Role:            truncate(strings.TrimSpace(definition.Role), 96),
+			CapabilityCount: len(definition.Capabilities),
+			Authorized:      allowed,
+		})
+	}
+	return out
 }
 
 func summarizeTasks(tasks []taskgraph.Task) []TaskSummary {
