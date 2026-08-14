@@ -56,6 +56,10 @@ on:
         default: dev
         type: string
 
+concurrency:
+  group: kingai-container-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
