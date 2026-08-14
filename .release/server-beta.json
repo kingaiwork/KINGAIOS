@@ -2,6 +2,6 @@
   "profile": "server",
   "channel": "beta",
   "requested_at": "2026-08-14",
-  "attempt": 1,
-  "reason": "First installable Server Beta after exact Live ISO embedded squashfs installation, GPT/EFI A-B + LUKS STATE validation, installed UEFI boot, A-B update and Recovery evidence"
+  "attempt": 2,
+  "reason": "Publish cleanly versioned installable Server Beta after release-channel artifact identity, exact Live ISO install UEFI proof, A-B update, Recovery rollback and fresh TUF evidence"
 }
