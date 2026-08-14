@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "core-defense",
+      "default": true,
+      "purpose": "host hardening, network visibility, DNS/TLS inspection and baseline evidence collection",
+      "execution": "host-read-mostly"
+    },
+    {
+      "id": "threat-intelligence",
+      "default": true,
+      "purpose": "KEV, CVE and exploit-likelihood ingestion, normalization and prioritization",
+      "execution": "unprivileged-service"
+    },
+    {
+      "id": "forensics",
+      "default": false,
+      "purpose": "disk, memory, packet and artifact triage in isolated workspaces",
+      "execution": "rootless-container"
+    },
+    {
+      "id": "malware-analysis",
+      "default": false,
+      "purpose": "static and behavioral malware triage with disposable analysis environments",
+      "execution": "isolated-vm-or-container"
+    },
+    {
+      "id": "authorized-validation",
+      "default": false,
+      "purpose": "scope-bound exposure verification, service validation and security control testing for owned, contracted or lab assets",
+      "execution": "scope-restricted-sandbox",
+      "requires": ["unexpired-scope", "audit", "approval-for-privileged-actions"]
+    },
+    {
+      "id": "cloud-security",
+      "default": false,
+      "purpose": "cloud posture, identity, configuration and workload assessment adapters",
+      "execution": "least-privilege-connector"
+    }
+  ]
+}

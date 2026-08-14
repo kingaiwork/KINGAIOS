@@ -1,0 +1,87 @@
+name: KINGAI OS Sentinel
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/kingai-sentinel/**'
+      - 'configs/sentinel*.json'
+      - 'sentinel/**'
+      - 'systemd/kingai-sentinel.service'
+      - 'systemd/kingai-threat-intel.*'
+      - 'scripts/build-sentinel-rootfs.sh'
+      - 'scripts/sentinel-intel-sync.sh'
+      - 'distro/packages/sentinel.txt'
+      - 'profiles/sentinel.yaml'
+      - '.github/workflows/sentinel.yml'
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: CPU architecture
+        type: choice
+        required: true
+        default: amd64
+        options: [amd64, arm64]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Validate Sentinel source
+        run: |
+          go test ./...
+          go vet ./...
+          go build -trimpath -o /tmp/kingai-sentinel ./cmd/kingai-sentinel
+          bash -n scripts/build-sentinel-rootfs.sh scripts/sentinel-intel-sync.sh
+          python3 -m json.tool configs/sentinel.json >/dev/null
+          python3 -m json.tool configs/sentinel-scope.example.json >/dev/null
+          python3 -m json.tool sentinel/feeds/feeds.json >/dev/null
+          python3 -m json.tool sentinel/packs/catalog.json >/dev/null
+
+  build-rootfs:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd qemu-user-static
+      - name: Build Sentinel root filesystem
+        run: sudo --preserve-env=PATH bash scripts/build-sentinel-rootfs.sh "${{ inputs.arch }}" dist
+      - name: Normalize ownership
+        run: sudo chown -R "$USER:$USER" dist
+      - name: Verify artifact
+        shell: bash
+        run: |
+          artifact=$(find dist -maxdepth 1 -name 'KINGAI-OS-sentinel-*-rootfs.tar.zst' -print -quit)
+          test -s "$artifact"
+          sha256sum -c "$artifact.sha256"
+          test -s "$artifact.spdx.json"
+          python3 - "$artifact.spdx.json" <<'PY'
+          import json, sys
+          p=json.load(open(sys.argv[1]))
+          assert p['spdxVersion']=='SPDX-2.3'
+          assert p['SPDXID']=='SPDXRef-DOCUMENT'
+          PY
+      - name: Upload Sentinel developer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-sentinel-${{ inputs.arch }}-rootfs
+          path: |
+            dist/KINGAI-OS-sentinel-*-rootfs.tar.zst
+            dist/KINGAI-OS-sentinel-*-rootfs.tar.zst.sha256
+            dist/KINGAI-OS-sentinel-*-rootfs.tar.zst.spdx.json
+          retention-days: 7

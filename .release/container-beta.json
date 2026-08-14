@@ -1,0 +1,8 @@
+{
+  "profile": "container",
+  "channel": "beta",
+  "version": "0.1.0-beta.1",
+  "requested_at": "2026-08-14",
+  "attempt": 1,
+  "reason": "First KINGAI OS Container beta after hardened non-root runtime, no-management-TCP enforcement, persistence smoke coverage, amd64/arm64 OCI validation, vulnerability gating, SBOM/provenance attestations and keyless signing pipeline"
+}

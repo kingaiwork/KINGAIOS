@@ -1,0 +1,7 @@
+{
+  "profile": "sentinel",
+  "channel": "dev",
+  "requested_at": "2026-08-14",
+  "attempt": 2,
+  "reason": "Republish KINGAI OS Sentinel Developer Preview with idempotent prerelease creation, superseding-release concurrency, installable Live ISO, cloud/server RootFS, QEMU BIOS/UEFI evidence and SPDX SBOM"
+}

@@ -6,12 +6,36 @@ base:
   architecture:
     - amd64
     - arm64
+runtime:
+  entrypoint: /usr/lib/kingai/kingaid
+  init_system: none
+  systemd_required: false
+  user: _kingai
+  uid: 10001
+  gid: 10001
+  privileged: false
+  management_transport: unix-socket
+  management_socket: /run/kingai/kingaid.sock
+  management_tcp_default: false
+  docker_socket_default: false
+  read_only_root_compatible: true
+persistence:
+  state_root: /var/lib/kingai
+  log_root: /var/log/kingai
+  required:
+    - /var/lib/kingai
+    - /var/log/kingai
+  ephemeral:
+    - /run/kingai
+    - /tmp
 features:
   desktop: false
   headless: true
-  systemd_required: false
   docker: true
   oci: true
+  cloud_container: true
+  ci: true
+  homelab: true
   local_ai_runtime: optional
   persistent_state: true
   unix_socket_api: true
@@ -25,10 +49,30 @@ kingai:
   memory_fabric: true
   agent_runtime: true
   audit: true
+security:
+  non_root_default: true
+  no_new_privileges_compatible: true
+  drop_all_capabilities_compatible: true
+  seccomp_runtime_default_compatible: true
+  no_management_tcp_default: true
+  no_host_root_mount_default: true
+  no_docker_socket_mount_default: true
+supply_chain:
+  multiarch_buildx: true
+  vulnerability_gate: critical_fixable
+  buildkit_sbom: true
+  buildkit_provenance: true
+  cyclonedx_sbom: true
+  github_attestation: true
+  sigstore_keyless_signing: true
 size_budget_mib:
   target: 300
   warning: 450
   hard: 650
 artifact:
   format: oci-image
+  registry: ghcr.io
   name: ghcr.io/kingaiwork/kingai-os:${VERSION}
+  platforms:
+    - linux/amd64
+    - linux/arm64
