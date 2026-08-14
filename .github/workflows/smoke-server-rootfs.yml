@@ -97,8 +97,13 @@ jobs:
           python3 - "$root/usr/share/kingai/legal/KINGAI-OS.spdx.json" <<'PY'
           import json, sys
           data=json.load(open(sys.argv[1]))
-          assert data['spdxVersion'].startswith('SPDX-')
-          assert data['name'].startswith('KINGAI OS')
+          assert data['spdxVersion'] == 'SPDX-2.3'
+          assert data['SPDXID'] == 'SPDXRef-DOCUMENT'
+          assert data['name'].startswith('KINGAI-OS-')
+          assert any(
+              p.get('SPDXID') == 'SPDXRef-Package-KINGAI-OS' and p.get('name') == 'KINGAI OS'
+              for p in data.get('packages', [])
+          )
           PY
 
           mib=$(sudo du -sm "$root" | awk '{print $1}')
