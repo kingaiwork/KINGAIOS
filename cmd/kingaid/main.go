@@ -24,6 +24,7 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/model"
 	"github.com/kingaiwork/KINGAIOS/internal/policy"
+	"github.com/kingaiwork/KINGAIOS/internal/runtimeadapter"
 	"github.com/kingaiwork/KINGAIOS/internal/scheduler"
 	"github.com/kingaiwork/KINGAIOS/internal/statuspub"
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
@@ -119,6 +120,13 @@ func main() {
 	if loaded, err := agent.Load(agentPath); err == nil { registry = loaded } else if !errors.Is(err, os.ErrNotExist) { log.Printf("agent registry load failed, using safe fallback: %v", err) }
 	modelCfg := loadModelConfig(modelPath)
 	models := modelSummary{Strategy: modelCfg.Strategy, DefaultMode: modelCfg.DefaultMode}
+	modelRegistry, modelRegistryErr := model.RegistryFromCandidates(modelCfg.Providers)
+	if modelRegistryErr != nil {
+		log.Printf("model provider registry rejected configuration, using empty fail-closed registry: %v", modelRegistryErr)
+		modelRegistry = model.NewRegistry()
+	}
+	_ = modelRegistry.Health(context.Background())
+	adapterManager := runtimeadapter.NewManager()
 	approvalStore := approval.Store{Root: approvalRoot}
 	memoryStore := memory.FileStore{Root: memoryRoot}
 	taskStore := taskgraph.Store{Root: taskRoot}
@@ -173,7 +181,7 @@ func main() {
 		healthCtx, cancel := context.WithTimeout(r.Context(), 150*time.Millisecond)
 		if execClient.Health(healthCtx) == nil { execState = "ready" }
 		cancel()
-		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "memory_service": "enabled", "memory_layers": "M0-M6", "model_router": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "audit": "enabled", "version": version})
+		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "memory_service": "enabled", "memory_layers": "M0-M6", "model_router": "enabled", "model_provider_registry": "enabled", "runtime_adapter_registry": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "model_providers": len(modelRegistry.IDs()), "healthy_model_providers": countHealthyProviders(modelRegistry.Statuses()), "runtime_adapters": len(adapterManager.IDs()), "audit": "enabled", "version": version})
 	})
 
 	mux.HandleFunc("/v1/policy/evaluate", func(w http.ResponseWriter, r *http.Request) {
@@ -199,10 +207,10 @@ func main() {
 		if len(in.Arguments) > 0 && !json.Valid(in.Arguments) { http.Error(w, "arguments must be valid JSON", http.StatusBadRequest); return }
 		result, err := execClient.Execute(r.Context(), executor.Request{Agent: in.Agent, Capability: in.Capability, Target: in.Target, Arguments: in.Arguments})
 		if err != nil {
-			appendAudit(auditPath, audit.Event{Type: "execution.dispatch", Agent: in.Agent, Capability: in.Capability, Allowed: false, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: err.Error()})
+			appendAudit(auditPath, audit.Event{Type: "execution.dispatch", ExecutionID: result.ExecutionID, Agent: in.Agent, Capability: in.Capability, Allowed: false, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), DurationMS: result.DurationMS, Reason: err.Error()})
 			writeJSON(w, http.StatusBadGateway, result); return
 		}
-		appendAudit(auditPath, audit.Event{Type: "execution.dispatch", Agent: in.Agent, Capability: in.Capability, Allowed: true, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), Reason: "executed by constrained broker"})
+		appendAudit(auditPath, audit.Event{Type: "execution.dispatch", ExecutionID: result.ExecutionID, Agent: in.Agent, Capability: in.Capability, Allowed: true, Risk: int(res.Risk), PeerUID: uid, TargetHash: audit.HashTarget(in.Target), DurationMS: result.DurationMS, Reason: "executed by constrained broker"})
 		writeJSON(w, http.StatusOK, result)
 	})
 
@@ -270,7 +278,16 @@ func main() {
 	mux.HandleFunc("/v1/model/select", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
 		var in model.Request; if !decodeJSON(w, r, 32<<10, &in) { return }
-		selected, err := model.Select(in, modelCfg.Providers); if err != nil { http.Error(w, "no eligible model", http.StatusServiceUnavailable); return }; writeJSON(w, http.StatusOK, selected)
+		selected, err := modelRegistry.Select(r.Context(), in); if err != nil { http.Error(w, "no eligible model", http.StatusServiceUnavailable); return }
+		writeJSON(w, http.StatusOK, selected)
+	})
+	mux.HandleFunc("/v1/model/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		writeJSON(w, http.StatusOK, modelRegistry.Statuses())
+	})
+	mux.HandleFunc("/v1/runtime/adapters", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		writeJSON(w, http.StatusOK, adapterManager.Statuses())
 	})
 
 	mux.HandleFunc("/v1/tasks/create", func(w http.ResponseWriter, r *http.Request) {
@@ -335,6 +352,7 @@ func loadModelConfig(path string) modelConfig {
 	var configured modelConfig; if json.Unmarshal(b, &configured) != nil { return m }
 	if configured.Strategy != "" { m.Strategy = configured.Strategy }; if configured.DefaultMode != "" { m.DefaultMode = configured.DefaultMode }; if configured.Providers != nil { m.Providers = configured.Providers }; return m
 }
+func countHealthyProviders(statuses []model.ProviderStatus) int { count := 0; for _, status := range statuses { if status.Health.OK { count++ } }; return count }
 func decodeJSON(w http.ResponseWriter, r *http.Request, max int64, out any) bool { r.Body = http.MaxBytesReader(w, r.Body, max); dec := json.NewDecoder(r.Body); dec.DisallowUnknownFields(); if err := dec.Decode(out); err != nil { http.Error(w, "invalid request", http.StatusBadRequest); return false }; return true }
 func appendAudit(path string, event audit.Event) { if err := audit.Append(path, event); err != nil { log.Printf("audit append failed: %v", err) } }
 func ownerForUID(uid uint32) string { return fmt.Sprintf("uid-%d", uid) }

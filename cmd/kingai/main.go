@@ -21,6 +21,7 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/memory"
 	"github.com/kingaiwork/KINGAIOS/internal/model"
 	"github.com/kingaiwork/KINGAIOS/internal/policy"
+	"github.com/kingaiwork/KINGAIOS/internal/runtimeadapter"
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
 )
 
@@ -44,6 +45,8 @@ Usage:
   kingai memory search <text...>
   kingai memory delete <id>
   kingai model select <capability> [--private] [--offline]
+  kingai model status
+  kingai runtime adapters
   kingai task create <agent> <goal...>
   kingai task list
   kingai task run <id>
@@ -67,6 +70,7 @@ func main() {
 	case "execution": executionCmd(os.Args[2:])
 	case "memory": memoryCmd(os.Args[2:])
 	case "model": modelCmd(os.Args[2:])
+	case "runtime": runtimeCmd(os.Args[2:])
 	case "task": taskCmd(os.Args[2:])
 	case "desktop": desktopCmd(os.Args[2:])
 	default: usage(); os.Exit(2)
@@ -77,7 +81,7 @@ func status(args []string) {
 	var remote map[string]any
 	if err := daemonJSON(http.MethodGet, "/v1/status", nil, &remote); err == nil {
 		if len(args) > 0 && strings.EqualFold(args[0], "--json") { _ = json.NewEncoder(os.Stdout).Encode(remote); return }
-		fmt.Printf("System:       %v\nVersion:      %v\nArchitecture: %v\nPolicy:       %v\nExecution:    %v\n", remote["name"], remote["version"], remote["architecture"], remote["policy"], remote["execution_broker"])
+		fmt.Printf("System:       %v\nVersion:      %v\nArchitecture: %v\nPolicy:       %v\nExecution:    %v\nProviders:    %v (%v healthy)\nAdapters:     %v\n", remote["name"], remote["version"], remote["architecture"], remote["policy"], remote["execution_broker"], remote["model_providers"], remote["healthy_model_providers"], remote["runtime_adapters"])
 		return
 	}
 	fallback := map[string]any{"name":"KINGAI OS","version":version,"channel":"dev","platform":runtime.GOOS+"/"+runtime.GOARCH,"daemon":"offline"}
@@ -183,11 +187,29 @@ func memoryCmd(args []string) {
 }
 
 func modelCmd(args []string) {
-	if len(args) < 2 || args[0] != "select" { usage(); os.Exit(2) }
-	req := model.Request{Capability: args[1]}
-	for _, arg := range args[2:] { switch arg { case "--private": req.Private = true; case "--offline": req.Offline = true; default: usage(); os.Exit(2) } }
-	var out model.Candidate
-	if err := daemonJSON(http.MethodPost, "/v1/model/select", req, &out); err != nil { fail(err) }
+	if len(args) < 1 { usage(); os.Exit(2) }
+	switch args[0] {
+	case "select":
+		if len(args) < 2 { usage(); os.Exit(2) }
+		req := model.Request{Capability: args[1]}
+		for _, arg := range args[2:] { switch arg { case "--private": req.Private = true; case "--offline": req.Offline = true; default: usage(); os.Exit(2) } }
+		var out model.Candidate
+		if err := daemonJSON(http.MethodPost, "/v1/model/select", req, &out); err != nil { fail(err) }
+		printJSON(out)
+	case "status":
+		if len(args) != 1 { usage(); os.Exit(2) }
+		var out []model.ProviderStatus
+		if err := daemonJSON(http.MethodGet, "/v1/model/status", nil, &out); err != nil { fail(err) }
+		printJSON(out)
+	default:
+		usage(); os.Exit(2)
+	}
+}
+
+func runtimeCmd(args []string) {
+	if len(args) != 1 || args[0] != "adapters" { usage(); os.Exit(2) }
+	var out []runtimeadapter.Status
+	if err := daemonJSON(http.MethodGet, "/v1/runtime/adapters", nil, &out); err != nil { fail(err) }
 	printJSON(out)
 }
 
