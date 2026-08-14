@@ -35,7 +35,7 @@ ApplicationWindow {
 
     readonly property var centers: [
         { id: "home", label: "Home", glyph: "⌂", title: "Intelligence Home", note: "Your governed local AI workspace.", detail: "See runtime health, active work and the system surfaces that need your attention." },
-        { id: "agents", label: "Agents", glyph: "A", title: "Agent Center", note: "Identity before authority.", detail: "KINGAI agents operate through named identities and capability policy. Privileged roles remain separated from ordinary agents." },
+        { id: "agents", label: "Agents", glyph: "A", title: "Agent Center", note: "Identity before authority.", detail: "See Agent roles and whether your current Unix peer identity may use them. Visibility never grants authority." },
         { id: "tasks", label: "Tasks", glyph: "T", title: "Task Center", note: "Goals become governed task graphs.", detail: "See safe lifecycle counts plus your private per-user task list without exposing another user's work or raw execution details." },
         { id: "approvals", label: "Approvals", glyph: "✓", title: "Approval Center", note: "Human authority stays explicit.", detail: "High-risk capabilities require scoped, expiring decisions. This overview exposes counts only; decisions remain behind the governed authorization path." },
         { id: "memory", label: "Memory", glyph: "M", title: "Memory Center", note: "Local-first intelligent state.", detail: "See your M0–M6 metadata counts without publishing Memory Data. Content remains inside the owner-scoped Memory service." },
@@ -304,6 +304,14 @@ ApplicationWindow {
                         }
                     }
 
+                    AgentsCenter {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 34
+                        Layout.rightMargin: 34
+                        visible: root.selectedCenter === "agents"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+
                     TaskCenter {
                         Layout.fillWidth: true
                         Layout.leftMargin: 34
@@ -371,7 +379,7 @@ ApplicationWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: "Privacy boundary: the public shell reads aggregate status only. Task Center and Memory Center additionally read a 0600 per-user snapshot created after Unix peer UID resolution. kingaid performs server-side redaction before the bridge receives data: raw task step targets/capabilities/results, approval tokens, credentials and Memory Data are excluded."
+                                text: "Privacy boundary: the public shell reads aggregate status only. Agents, Tasks and Memory additionally read a 0600 per-user snapshot created after Unix peer UID resolution. kingaid performs server-side redaction before the bridge receives data: capability names, raw task step targets/results, approval tokens, credentials and Memory record payloads are excluded."
                                 color: "#78828e"
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 10
