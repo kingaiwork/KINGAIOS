@@ -28,7 +28,7 @@ PlasmoidItem {
 
     fullRepresentation: ColumnLayout {
         spacing: 12
-        implicitWidth: 340
+        implicitWidth: 360
 
         RowLayout {
             Layout.fillWidth: true
@@ -109,6 +109,26 @@ PlasmoidItem {
                     Label { text: root.modelProviders > 0 ? String(root.modelProviders) : "None"; font.bold: true; font.pixelSize: 18 }
                     Label { text: root.modelProviders > 0 ? root.modelMode : "not configured"; opacity: 0.7; font.pixelSize: 10 }
                 }
+            }
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Open KINGAI Intelligence"
+            onClicked: Qt.openUrlExternally("kingai://home")
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Button {
+                Layout.fillWidth: true
+                text: root.pendingApprovals > 0 ? "Approvals (" + root.pendingApprovals + ")" : "Approvals"
+                onClicked: Qt.openUrlExternally("kingai://approvals")
+            }
+            Button {
+                Layout.fillWidth: true
+                text: "Tasks"
+                onClicked: Qt.openUrlExternally("kingai://tasks")
             }
         }
 
