@@ -1,0 +1,48 @@
+name: KINGAI OS Desktop Contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "profiles/desktop.yaml"
+      - "internal/desktop/**"
+      - "cmd/kingai/**"
+      - "scripts/validate-desktop.sh"
+      - "Makefile"
+      - ".github/workflows/desktop-contract.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "profiles/desktop.yaml"
+      - "internal/desktop/**"
+      - "cmd/kingai/**"
+      - "scripts/validate-desktop.sh"
+      - "Makefile"
+      - ".github/workflows/desktop-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Validate single Desktop edition contract
+        run: bash scripts/validate-desktop.sh
+      - name: Test Desktop experience manager
+        run: go test ./internal/desktop
+      - name: Build KINGAI CLI with Desktop commands
+        run: go build -trimpath -o /tmp/kingai ./cmd/kingai
+      - name: Verify Desktop CLI catalog
+        run: |
+          test "$(/tmp/kingai desktop list | wc -l)" -eq 3
+          /tmp/kingai desktop list | grep -q '^kingai-intelligence[[:space:]]\+KINGAI Intelligence$'
+          /tmp/kingai desktop list | grep -q '^kingai-flow[[:space:]]\+KINGAI Flow$'
+          /tmp/kingai desktop list | grep -q '^kingai-classic[[:space:]]\+KINGAI Classic$'
