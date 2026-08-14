@@ -54,6 +54,11 @@ else
     '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs|build-live-iso)\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$)'
 fi
 
+# Runtime state is shared across profiles and must remain encrypted, persistent
+# across A/B slots, and safely migratable from the pre-layout Beta installations.
+require_fresh runtime-persistence 'smoke-runtime-persistence-migration-vm.yml' \
+  '^(cmd/kingai-update/|cmd/kingai-installer/|internal/update/|internal/installer/|systemd/(kingaid|kingai-update-health)\.service$|scripts/build-rootfs\.sh$|distro/packages/(server|desktop|installer-[^/]+)\.txt$|distro/overlay/|go\.(mod|sum)$|\.github/workflows/smoke-runtime-persistence-migration-vm\.yml$)'
+
 require_fresh ab-update 'smoke-update-ab-vm.yml' \
   '^(cmd/kingai-update/|cmd/kingai-installer/|internal/update/|internal/installer/|systemd/kingai-update-health\.service$|scripts/build-rootfs\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|go\.(mod|sum)$)'
 require_fresh recovery 'smoke-recovery-vm.yml' \
