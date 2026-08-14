@@ -36,6 +36,12 @@ jobs:
           cache: false
       - name: Validate single Desktop edition contract
         run: bash scripts/validate-desktop.sh
+      - name: Validate first-run shell transaction
+        run: |
+          bash -n desktop/welcome/launch.sh
+          grep -q 'StandardPaths.CacheLocation' desktop/welcome/Main.qml
+          ! grep -q 'kingai-desktop.ini' desktop/welcome/Main.qml
+          grep -q 'desktop set "\$selected"' desktop/welcome/launch.sh
       - name: Test Desktop experience manager
         run: go test ./internal/desktop
       - name: Build KINGAI CLI with Desktop commands
