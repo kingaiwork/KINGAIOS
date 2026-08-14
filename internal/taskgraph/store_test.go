@@ -47,6 +47,10 @@ func TestTaskValidatesDependencies(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unknown dependency to fail")
 	}
+	_, err = s.Create("goal", "main", 1000, []Step{{ID: "one", DependsOn: []string{"two"}}, {ID: "two", DependsOn: []string{"one"}}})
+	if err == nil {
+		t.Fatal("expected dependency cycle to fail")
+	}
 }
 
 func TestTaskPeerIsolation(t *testing.T) {
@@ -65,5 +69,64 @@ func TestTaskPeerIsolation(t *testing.T) {
 	other, err := s.ListForPeer(1001, 10)
 	if err != nil || len(other) != 0 {
 		t.Fatalf("other=%v err=%v", other, err)
+	}
+}
+
+func TestStepLifecycleEnforcesDependencies(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	task, err := s.Create("deploy", "main", 1000, []Step{
+		{ID: "inspect", Title: "inspect"},
+		{ID: "apply", Title: "apply", DependsOn: []string{"inspect"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TransitionStepForPeer(task.ID, 1000, "apply", StatusRunning, nil, ""); err == nil {
+		t.Fatal("expected dependency gate")
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "inspect", StatusRunning, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "inspect", StatusCompleted, json.RawMessage(`{"checked":true}`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := ReadySteps(task)
+	if len(ready) != 1 || ready[0].ID != "apply" {
+		t.Fatalf("ready=%#v", ready)
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "apply", StatusRunning, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "apply", StatusCompleted, json.RawMessage(`{"applied":true}`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != StatusCompleted {
+		t.Fatalf("status=%s", task.Status)
+	}
+}
+
+func TestStepFailureFailsTask(t *testing.T) {
+	s := Store{Root: t.TempDir()}
+	task, err := s.Create("goal", "main", 1000, []Step{{ID: "one"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TransitionStepForPeer(task.ID, 1001, "one", StatusRunning, nil, ""); err == nil {
+		t.Fatal("expected peer mismatch")
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "one", StatusRunning, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = s.TransitionStepForPeer(task.ID, 1000, "one", StatusFailed, nil, "boom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Status != StatusFailed || task.Error != "boom" {
+		t.Fatalf("unexpected failed task: %#v", task)
 	}
 }
