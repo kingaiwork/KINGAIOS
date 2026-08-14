@@ -1,43 +1,61 @@
 # KINGAI OS D5 Local Runtime API
 
-**Status:** Developer / Pre-Alpha  
+**Status:** D5 Alpha Runtime Foundation / Pre-Alpha  
 **Transport:** local Unix domain socket  
 **Default socket:** `/run/kingai/kingaid.sock`
 
-This API is a local operating-system interface. It is not designed as a public unauthenticated TCP API.
+The local Runtime API is an operating-system interface, not a public unauthenticated TCP API. Peer identity comes from Unix peer credentials and participates in authorization.
 
-Peer identity is derived from Unix peer credentials and is part of authorization decisions.
-
-## Health
+## Process health and readiness
 
 ### `GET /healthz`
 
-Returns daemon health and source version.
+Liveness only. A successful response means `kingaid` is running and can answer requests.
 
-## Status
+### `GET /readyz`
+
+Readiness is stricter than liveness. The response contains:
+
+```json
+{
+  "ready": true,
+  "status": "ready",
+  "components": [
+    {"name":"agent_registry","required":true,"ok":true,"status":"ready"},
+    {"name":"audit_and_state","required":true,"ok":true,"status":"writable"},
+    {"name":"execution_broker","required":false,"ok":true,"status":"not_required"},
+    {"name":"model_providers","required":false,"ok":true,"status":"not_configured"},
+    {"name":"policy","required":true,"ok":true,"status":"ready"},
+    {"name":"runtime_adapters","required":false,"ok":true,"status":"not_configured"}
+  ]
+}
+```
+
+A failed **required** component returns HTTP 503. Optional model/provider or adapter capability can be absent without blocking the local governance core.
+
+Bootable Server/Desktop packages set `KINGAI_REQUIRE_EXECD=true`. Container keeps ExecD optional because it deliberately does not include the host privileged execution broker.
+
+## Runtime status
 
 ### `GET /v1/status`
 
-Returns sanitized runtime status suitable for local UI surfaces.
+Sanitized local status. Current fields include:
 
-Current fields include:
-
-- product name;
-- version;
-- architecture line;
-- policy status;
-- approval/task/memory/model service state;
-- registered agent count;
-- model strategy/mode;
+- product/version/architecture;
+- runtime readiness status;
+- Policy / Approval / Task / Memory state;
+- task run budget;
+- constrained ExecD status;
+- agent count;
+- model strategy/candidate/provider health counts;
+- adapter count;
 - audit state.
 
-Sensitive prompt, token, password, secret and memory payload data must not be published through public status.
+Sensitive prompts, secrets, tokens, credentials and memory payloads must not appear in status output.
 
 ## Policy
 
 ### `POST /v1/policy/evaluate`
-
-Request:
 
 ```json
 {
@@ -48,9 +66,7 @@ Request:
 }
 ```
 
-The daemon determines Owner state from peer UID. A client cannot submit `owner` or `approved` fields.
-
-If an approval is supplied, it must match Agent + Capability + Target Hash + Peer UID and must still be approved/unconsumed/unexpired.
+Owner identity comes from peer UID. Clients cannot submit trusted `owner` or `approved` flags.
 
 ## Approval Broker
 
@@ -65,41 +81,34 @@ If an approval is supplied, it must match Agent + Capability + Target Hash + Pee
 }
 ```
 
-An approval request is created only when the agent/capability identity is valid and central policy says explicit approval is required.
-
 ### `GET /v1/approval/list`
 
-Current developer implementation requires local UID 0.
+Developer implementation currently requires local UID 0.
 
 ### `POST /v1/approval/decision`
 
 ```json
-{
-  "id": "approval-id",
-  "action": "approve"
-}
+{"id":"approval-id","action":"approve"}
 ```
 
-or:
+or `deny`.
+
+Approval is bound to Agent + Capability + Target Hash + Peer UID, expires, and can be consumed only once.
+
+## Constrained execution
+
+### `POST /v1/execution/run`
 
 ```json
 {
-  "id": "approval-id",
-  "action": "deny"
+  "agent":"system-ops",
+  "capability":"service.restart",
+  "target":"nginx.service",
+  "approval_id":"optional-id"
 }
 ```
 
-Current developer implementation requires local UID 0.
-
-Approval lifecycle:
-
-```text
-pending -> approved -> consumed
-pending -> denied
-pending/approved -> expired
-```
-
-Consumed approvals cannot be reused.
+The request passes central Policy/Approval before `kingaid` delegates to `kingai-execd`. Execution results contain an `execution_id` receipt and timing evidence. KINGAI OS does not expose a generic privileged AI shell endpoint.
 
 ## Memory
 
@@ -107,144 +116,115 @@ Consumed approvals cannot be reused.
 
 ```json
 {
-  "agent": "main",
-  "kind": "task",
-  "sensitivity": "private",
-  "data": {
-    "note": "example"
-  }
+  "agent":"main",
+  "kind":"task",
+  "sensitivity":"private",
+  "metadata":{"layer":"M2"},
+  "data":{"note":"example"}
 }
 ```
-
-Memory owner namespace is derived from local peer UID.
 
 ### `GET /v1/memory/list`
 
-Lists records for the current peer namespace.
+### `POST /v1/memory/search`
 
 ### `POST /v1/memory/delete`
 
-```json
-{
-  "id": "memory-record-id"
-}
-```
+Memory ownership is derived from local peer UID. D5 metadata spans M0 Context through M6 Evolution; M6 data does not imply self-granted execution authority.
 
-Deletes only inside the current peer namespace.
-
-## Model Router
+## Model Fabric
 
 ### `POST /v1/model/select`
 
 ```json
-{
-  "capability": "chat",
-  "private": true,
-  "offline": false
-}
+{"capability":"chat","private":true,"offline":false}
 ```
 
-The router filters unavailable/incompatible candidates. Private or offline mode excludes non-local candidates.
+Selection now goes through the Provider Registry. Private/offline requests exclude remote candidates. No configured/eligible provider returns HTTP 503 instead of silently using a cloud service.
 
-If no eligible candidate exists, the daemon returns a service-unavailable response rather than silently violating the requested constraints.
+### `GET /v1/model/status`
 
-## Task Graph
+Returns Provider Status records including health, consecutive failures, last error and update time.
+
+Current default `configs/models.json` intentionally contains no provider, so the default system remains fail-closed and performs no implicit model-network discovery.
+
+## Runtime Adapters
+
+### `GET /v1/runtime/adapters`
+
+Returns adapter lifecycle snapshots. Lifecycle states are:
+
+```text
+registered
+starting
+healthy
+degraded
+stopping
+stopped
+```
+
+External runtimes remain replaceable adapters. A capability-probe or execution failure marks an adapter degraded rather than silently routing through it.
+
+## Task Graph and Scheduler
 
 ### `POST /v1/tasks/create`
 
-Simple task:
-
 ```json
 {
-  "goal": "verify server health",
-  "agent": "main"
-}
-```
-
-Task with steps:
-
-```json
-{
-  "goal": "inspect then restart service",
-  "agent": "system-ops",
-  "steps": [
-    {
-      "id": "inspect",
-      "title": "Inspect service",
-      "status": "created"
-    },
-    {
-      "id": "restart",
-      "title": "Restart service",
-      "capability": "service.restart",
-      "depends_on": ["inspect"],
-      "status": "created"
-    }
+  "goal":"inspect then restart service",
+  "agent":"system-ops",
+  "steps":[
+    {"id":"inspect","title":"Inspect service","status":"created"},
+    {"id":"restart","capability":"service.restart","target":"nginx.service","depends_on":["inspect"],"status":"created"}
   ]
 }
 ```
 
-Tasks are bound to the creating peer UID.
-
 ### `GET /v1/tasks/list`
-
-Non-root peers see only tasks owned by their peer UID. Root may inspect all tasks in the current developer implementation.
 
 ### `POST /v1/tasks/transition`
 
-```json
-{
-  "id": "task-id",
-  "status": "planning"
-}
-```
+### `POST /v1/tasks/step/transition`
 
-Optional completion result:
+### `POST /v1/tasks/run`
 
-```json
-{
-  "id": "task-id",
-  "status": "completed",
-  "result": {
-    "ok": true
-  }
-}
-```
+The scheduler advances dependency-ready executable steps through Policy → Approval → constrained execution → result state.
 
-Failure/blocking state may carry an `error` string.
+To keep one request bounded, a `task run` call has a step-processing budget. Default: `64`; environment: `KINGAI_TASK_RUN_BUDGET`; hard maximum: `1024`. Reaching the budget returns HTTP 429 with the partially advanced task so execution can continue in another call. Context cancellation is honored before further dispatch.
 
-Allowed lifecycle is validated by the Task Graph state machine.
-
-## Current trust model
+## Trust path
 
 ```text
 local Unix connection
   ↓
 SO_PEERCRED UID
   ↓
-agent identity binding
+Agent Registry
   ↓
-agent capability manifest
+Capability Policy
   ↓
-central policy
+Approval when required
   ↓
-approval token when required
+Task Scheduler / ExecD
+  ↓
+Result + Audit + Memory
 ```
 
-The API intentionally does not treat client-provided JSON as proof of owner identity or approval.
+## CLI surface
 
-## Future API evolution
+Relevant commands include:
 
-Planned additions include:
-
-- Planner endpoints;
-- task-step scheduling;
-- capability-specific Execution Broker requests/results;
-- adapter lifecycle;
-- richer Memory search/retrieval;
-- model-provider health;
-- Desktop-native approval events;
-- device/fleet operations.
+```text
+kingai status --json
+kingai policy check ...
+kingai approval ...
+kingai execution run ...
+kingai memory ...
+kingai model select ...
+kingai model status
+kingai runtime adapters
+kingai task ...
+```
 
 Breaking API changes remain possible while the project is Pre-Alpha.
 
@@ -252,28 +232,16 @@ Breaking API changes remain possible while the project is Pre-Alpha.
 
 # 中文摘要
 
-KINGAI OS D5 Runtime API 默认只通过本机 Unix Socket 提供，不是公开 TCP 管理 API。
+KINGAI OS D5 Runtime API 默认只通过本机 Unix Socket 提供。
 
-当前统一接口覆盖：
+现在明确区分：
 
-```text
-Health
-Status
-Policy
-Approval
-Memory
-Model
-Task Graph
-```
+- `/healthz`：进程是否活着；
+- `/readyz`：核心是否具备接任务条件；
+- `/v1/status`：给 CLI / Desktop 使用的脱敏系统状态。
 
-最重要的安全原则是：
+Readiness 中 Policy、Agent Registry、Audit/State 是核心条件；Server/Desktop 还要求 ExecD。模型和外部 Adapter 是可选能力，因此默认没有模型 Provider 时 OS 仍可正常 Ready，同时模型请求继续 503 Fail-Closed。
 
-- Owner 不能由 JSON 伪造；
-- Approved 不能由 JSON 伪造；
-- 本机 Peer UID 来自内核；
-- Approval 与 Agent / Capability / Target Hash / Peer UID 绑定；
-- Approval 一次性消费；
-- Task 和 Memory 默认按 Peer UID 隔离；
-- 没有合适模型时失败，不擅自违反 Private/Offline 条件。
+Task Scheduler 单次运行默认最多处理 64 个可执行 Step，并响应取消，防止巨大 Task 长时间占用 Runtime。
 
-后续 Server、Desktop、IoT、Container、OpenClaw、MCP 等都应围绕同一套 Runtime Contract 扩展，而不是建立互不兼容的接口。
+新增的 Provider Health 和 Adapter Lifecycle 只增强可观测性，不引入新的后台守护进程，也不会自动连接任何云模型或外部 Agent 框架。
