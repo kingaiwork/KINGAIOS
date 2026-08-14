@@ -9,6 +9,7 @@ KINGAI OS official technical documentation.
 - [Verified Project Status](STATUS.md)
 - [Architecture](ARCHITECTURE.md)
 - [Platform Editions](PLATFORMS.md)
+- [D5 Local Runtime API](RUNTIME-API.md)
 - [Roadmap](ROADMAP.md)
 - [Building](BUILDING.md)
 - [Release Policy](RELEASE-POLICY.md)
@@ -18,9 +19,8 @@ KINGAI OS official technical documentation.
 
 - [Desktop Architecture](DESKTOP.md)
 - [Device Packs](DEVICE-PACKS.md)
-- [IoT / Edge notes](../iot/README.md)
-- Container profile: `profiles/container.yaml`
-- Container Dockerfile: `container/Dockerfile`
+- [IoT / Edge](../iot/README.md)
+- [Container / Docker / OCI](../container/README.md)
 
 ## Update and delivery
 
@@ -61,10 +61,17 @@ KINGAI OS 当前官方文档统一到 **D5 Alpha Runtime Foundation**。
 - 已验证状态：`docs/STATUS.md`
 - 系统架构：`docs/ARCHITECTURE.md`
 - 四个平台：`docs/PLATFORMS.md`
+- Runtime API：`docs/RUNTIME-API.md`
 - 路线图：`docs/ROADMAP.md`
 - 构建说明：`docs/BUILDING.md`
 - Release Policy：`docs/RELEASE-POLICY.md`
 - 安全策略：`SECURITY.md`
+
+## 平台文档
+
+- Desktop：`docs/DESKTOP.md`
+- IoT / Device Pack：`docs/DEVICE-PACKS.md`、`iot/README.md`
+- Container：`container/README.md`
 
 ## 四个正式版本
 
