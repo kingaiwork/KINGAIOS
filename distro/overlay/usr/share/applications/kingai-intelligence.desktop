@@ -1,0 +1,41 @@
+[Desktop Entry]
+Type=Application
+Name=KINGAI Intelligence
+GenericName=AI-native desktop workspace
+Comment=Governed local AI workspace for KINGAI OS Desktop
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh %u
+Icon=preferences-system
+Terminal=false
+Categories=Utility;System;
+Keywords=KINGAI;AI;Agents;Tasks;Approvals;Memory;Models;Automation;
+MimeType=x-scheme-handler/kingai;
+StartupNotify=true
+Actions=Agents;Tasks;Approvals;Memory;Models;Automations;Health;
+
+[Desktop Action Agents]
+Name=Agents
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center agents
+
+[Desktop Action Tasks]
+Name=Tasks
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center tasks
+
+[Desktop Action Approvals]
+Name=Approvals
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center approvals
+
+[Desktop Action Memory]
+Name=Memory
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center memory
+
+[Desktop Action Models]
+Name=Models
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center models
+
+[Desktop Action Automations]
+Name=Automations
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center automations
+
+[Desktop Action Health]
+Name=System Health
+Exec=bash /usr/share/kingai/desktop/intelligence/launch.sh --center health
