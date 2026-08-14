@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/container.yml
+      - .github/workflows/container-release.yml
       - .dockerignore
       - container/**
       - profiles/container.yaml
@@ -21,6 +22,7 @@ on:
       - main
     paths:
       - .github/workflows/container.yml
+      - .github/workflows/container-release.yml
       - .dockerignore
       - container/**
       - profiles/container.yaml
