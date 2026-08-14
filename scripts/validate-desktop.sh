@@ -14,6 +14,12 @@ for path in \
   desktop/intelligence/Main.qml \
   desktop/intelligence/TaskCenter.qml \
   desktop/intelligence/launch.sh \
+  internal/desktopbridge/snapshot.go \
+  internal/desktopbridge/snapshot_test.go \
+  internal/memory/summary.go \
+  internal/memory/summary_test.go \
+  cmd/kingaid/desktop_private.go \
+  cmd/kingaid/desktop_private_test.go \
   cmd/kingai-desktop-bridge/main.go \
   cmd/kingai-desktop-bridge/main_test.go \
   distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service \
@@ -147,20 +153,21 @@ for forbidden in (
 
 bridge = Path("cmd/kingai-desktop-bridge/main.go").read_text()
 for token in (
-    '"/v1/tasks/list"',
-    'ListForPeer',
+    '"/v1/desktop/private"',
+    'desktopbridge.Snapshot',
+    'snapshot.UserUID != uint32(os.Geteuid())',
     '0o600',
     '0o700',
     'XDG_RUNTIME_DIR',
     'refuses to run as root',
-    'truncateText',
 ):
-    # ListForPeer is intentionally enforced in kingaid, not called by the bridge.
-    if token == 'ListForPeer':
-        continue
     if token not in bridge:
         raise SystemExit(f"Desktop Bridge missing security contract token: {token}")
 for forbidden in (
+    '"/v1/tasks/list"',
+    '"/v1/memory/list"',
+    'taskgraph.Task',
+    'memory.Record',
     'step.Target',
     'step.Capability',
     'step.ApprovalID',
@@ -168,7 +175,39 @@ for forbidden in (
     'step.Error',
 ):
     if forbidden in bridge:
-        raise SystemExit(f"Desktop Bridge must not copy raw step data: {forbidden}")
+        raise SystemExit(f"Desktop Bridge must consume only the server-redacted snapshot: {forbidden}")
+
+daemon = Path('cmd/kingaid/main.go').read_text()
+if 'registerDesktopPrivateHandler(mux, taskStore, memoryStore, version)' not in daemon:
+    raise SystemExit('kingaid must register the Desktop private handler on its peer-credential Unix-socket mux')
+handler = Path('cmd/kingaid/desktop_private.go').read_text()
+for token in (
+    '"/v1/desktop/private"',
+    'peerUID(r.Context())',
+    'taskStore.ListForPeer(uid, 100)',
+    'memoryStore.Summarize(ownerForUID(uid))',
+    'desktopbridge.Build',
+):
+    if token not in handler:
+        raise SystemExit(f"kingaid Desktop private handler missing boundary token: {token}")
+for forbidden in ('/v1/approval/list', 'memoryStore.List(', 'taskStore.List('):
+    if forbidden in handler:
+        raise SystemExit(f"kingaid Desktop private handler bypasses scoped summary API: {forbidden}")
+
+snapshot = Path('internal/desktopbridge/snapshot.go').read_text()
+for token in ('TaskSummary', 'memory.Summary', 'truncate(strings.TrimSpace(task.Goal), 512)'):
+    if token not in snapshot:
+        raise SystemExit(f"Desktop snapshot contract missing redaction token: {token}")
+for forbidden in ('Target ', 'Capability ', 'ApprovalID ', 'Result ', 'Error '):
+    if forbidden in snapshot:
+        raise SystemExit(f"Desktop snapshot schema contains forbidden raw task field: {forbidden.strip()}")
+
+memory_summary = Path('internal/memory/summary.go').read_text()
+if 'Data ' in memory_summary or 'json.RawMessage' in memory_summary:
+    raise SystemExit('Memory summary implementation must not model record Data')
+for token in ('ByLayer', 'BySensitivity', 'Expiring', 'record.ExpiresAt'):
+    if token not in memory_summary:
+        raise SystemExit(f"Memory summary contract missing token: {token}")
 
 layouts = {
     'kingai-intelligence.js': 'kingai-intelligence',
