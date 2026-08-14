@@ -36,12 +36,13 @@ require_fresh() {
   echo "${gate}: fresh (${workflow} @ ${sha})"
 }
 
-# Every non-dev release first requires a fresh cross-component regression pass.
-# Deliberately exclude .release request markers so a release request can be the
-# commit after the evidence without invalidating it. Any actual code, policy,
-# service, build/release script, workflow or module change makes the evidence stale.
+# Every non-dev release first requires fresh cross-component regression and
+# reachable known-vulnerability evidence. Deliberately exclude .release request
+# markers so a release request can follow the evidence without invalidating it.
 require_fresh stability-security 'stability-security-crosscheck.yml' \
   '^(cmd/|internal/|configs/|container/|systemd/|scripts/|release/|\.github/workflows/|go\.(mod|sum)$)'
+require_fresh go-vulnerability 'govulncheck.yml' \
+  '^(cmd/|internal/|go\.(mod|sum)$|\.github/workflows/govulncheck\.yml$)'
 
 if [[ "$profile" == desktop ]]; then
   require_fresh installer 'smoke-installer-desktop-vm.yml' \
