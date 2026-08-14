@@ -1,0 +1,20 @@
+[Unit]
+Description=KINGAI Desktop Private Bridge
+Documentation=https://os.kingai.work
+After=graphical-session-pre.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/kingai/kingai-desktop-bridge
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=default.target
