@@ -1,6 +1,17 @@
 name: KINGAI OS Container
 
 on:
+  pull_request:
+    paths:
+      - container/**
+      - profiles/container.yaml
+      - scripts/build-container.sh
+      - cmd/kingai/**
+      - cmd/kingaid/**
+      - internal/**
+      - configs/**
+      - go.mod
+      - go.sum
   workflow_dispatch:
     inputs:
       publish:
@@ -28,7 +39,7 @@ jobs:
           docker buildx create --name kingai-builder --use
           docker buildx inspect --bootstrap
       - name: Verify multi-architecture image build
-        if: ${{ !inputs.publish }}
+        if: ${{ github.event_name == 'pull_request' || !inputs.publish }}
         run: |
           docker buildx build \
             --file container/Dockerfile \
@@ -36,10 +47,10 @@ jobs:
             --output type=cacheonly \
             .
       - name: Login to GHCR
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Publish developer multi-architecture image
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/kingai-os
           TAG: ${{ inputs.tag }}
