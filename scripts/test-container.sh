@@ -30,7 +30,7 @@ docker build \
   .
 
 image_user=$(docker image inspect "$image" --format '{{.Config.User}}')
-[[ "$image_user" == "10001:10001" ]] || { echo "expected image user 10001:10001, got $image_user" >&2; exit 1; }
+[[ "$image_user" == "_kingai:kingai" ]] || { echo "expected image user _kingai:kingai, got $image_user" >&2; exit 1; }
 
 exposed_ports=$(docker image inspect "$image" --format '{{json .Config.ExposedPorts}}')
 [[ "$exposed_ports" == "null" ]] || { echo "container must not expose management TCP ports: $exposed_ports" >&2; exit 1; }
