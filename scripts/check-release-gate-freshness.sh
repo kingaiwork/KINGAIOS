@@ -54,6 +54,11 @@ else
     '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs|build-live-iso)\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$)'
 fi
 
+# Production installations do not persist the CI STATE key. Require a real
+# systemd/cryptsetup console passphrase unlock proof for every non-dev profile.
+require_fresh state-passphrase-unlock 'smoke-state-passphrase-unlock-vm.yml' \
+  '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs)\.sh$|distro/packages/(server|desktop|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$|\.github/workflows/smoke-state-passphrase-unlock-vm\.yml$)'
+
 # Runtime state is shared across profiles and must remain encrypted, persistent
 # across A/B slots, and safely migratable from the pre-layout Beta installations.
 require_fresh runtime-persistence 'smoke-runtime-persistence-migration-vm.yml' \
