@@ -221,6 +221,7 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	registerDesktopPrivateHandler(mux, taskStore, memoryStore, version)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "kingaid", "version": version, "architecture": "D5-preview"})
