@@ -10,6 +10,10 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
 )
 
+var ErrRunBudgetExceeded = errors.New("scheduler run budget exceeded")
+
+const DefaultMaxStepsPerRun = 64
+
 type Authorization struct {
 	Allowed          bool
 	ApprovalRequired bool
@@ -38,25 +42,39 @@ type TaskStore interface {
 }
 
 type Scheduler struct {
-	Store      TaskStore
-	Authorizer Authorizer
-	Dispatcher Dispatcher
+	Store          TaskStore
+	Authorizer     Authorizer
+	Dispatcher     Dispatcher
+	MaxStepsPerRun int
 }
 
 func (s Scheduler) RunReady(ctx context.Context, taskID string, peerUID uint32) (taskgraph.Task, error) {
 	if s.Store == nil || s.Authorizer == nil || s.Dispatcher == nil {
 		return taskgraph.Task{}, errors.New("scheduler dependencies are required")
 	}
+	if err := ctx.Err(); err != nil {
+		return taskgraph.Task{}, err
+	}
 	task, err := s.Store.Get(taskID)
 	if err != nil { return taskgraph.Task{}, err }
 	if peerUID != 0 && task.PeerUID != peerUID { return taskgraph.Task{}, errors.New("task owner mismatch") }
 
+	budget := s.MaxStepsPerRun
+	if budget <= 0 { budget = DefaultMaxStepsPerRun }
+	if budget > 1024 { budget = 1024 }
+	processed := 0
+
 	for {
+		if err := ctx.Err(); err != nil { return task, err }
 		ready := taskgraph.ReadySteps(task)
 		if len(ready) == 0 { return task, nil }
 		progressed := false
 		for _, step := range ready {
+			if err := ctx.Err(); err != nil { return task, err }
 			if step.Capability == "" { continue }
+			if processed >= budget { return task, ErrRunBudgetExceeded }
+			processed++
+
 			auth, err := s.Authorizer.Authorize(ctx, task, step, peerUID)
 			if err != nil { return task, err }
 			if !auth.Allowed {

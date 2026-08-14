@@ -9,6 +9,8 @@ Wants=kingai-execd.service kingai-health-scan.timer
 Type=simple
 User=_kingai
 Group=kingai
+Environment=KINGAI_REQUIRE_EXECD=true
+Environment=KINGAI_TASK_RUN_BUDGET=64
 ExecStart=/usr/lib/kingai/kingaid
 Restart=on-failure
 RestartSec=3s
