@@ -1,0 +1,176 @@
+name: KINGAI OS Production STATE Passphrase Unlock VM Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'scripts/kingai-install-live.sh'
+      - 'scripts/build-rootfs.sh'
+      - 'distro/packages/server.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/packages/installer-amd64.txt'
+      - 'systemd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/smoke-state-passphrase-unlock-vm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-state-passphrase-unlock-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  production-passphrase-unlock-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install build and interactive VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd gdisk parted dosfstools e2fsprogs \
+            cryptsetup-bin rsync grub-efi-amd64-bin grub2-common \
+            qemu-utils qemu-system-x86 ovmf expect
+
+      - name: Build installer and Server rootfs
+        run: |
+          mkdir -p ci
+          go build -trimpath -o ci/kingai-installer ./cmd/kingai-installer
+          sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 \
+            bash scripts/build-rootfs.sh server amd64 dist
+
+      - name: Inject production-unlock proof marker
+        shell: bash
+        run: |
+          root=dist/rootfs-server-amd64
+          sudo tee "$root/usr/lib/kingai/kingai-production-state-unlock-smoke" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          test ! -e /etc/kingai/state-test.key
+          test ! -e /usr/lib/systemd/system/kingai-state-unlock-ci.service
+          mountpoint -q /var/lib/kingai-state
+          mountpoint -q /var/lib/kingai
+          mountpoint -q /var/log/kingai
+          test -e /dev/mapper/KINGAI_STATE
+          findmnt -rn -T /var/lib/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          findmnt -rn -T /var/log/kingai -o SOURCE | grep -Fq 'KINGAI_STATE'
+          test -f /var/lib/kingai-state/kingai/runtime/.layout-v1-ready
+          systemctl is-active --quiet kingaid.service
+          echo production-passphrase-unlock > /var/lib/kingai/production-unlock-probe.txt
+          sync
+          test "$(cat /var/lib/kingai-state/kingai/runtime/lib/production-unlock-probe.txt)" = production-passphrase-unlock
+          echo KINGAI_PRODUCTION_STATE_UNLOCK_OK > /dev/ttyS0
+          systemctl --no-block poweroff
+          EOF
+          sudo chmod 0755 "$root/usr/lib/kingai/kingai-production-state-unlock-smoke"
+          sudo tee "$root/usr/lib/systemd/system/kingai-production-state-unlock-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI production STATE passphrase unlock CI proof
+          After=local-fs.target kingaid.service
+          Requires=kingaid.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/lib/kingai/kingai-production-state-unlock-smoke
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-production-state-unlock-smoke.service \
+            "$root/etc/systemd/system/multi-user.target.wants/kingai-production-state-unlock-smoke.service"
+
+      - name: Install without persisting the STATE passphrase
+        shell: bash
+        run: |
+          set -euo pipefail
+          truncate -s 26G ci/passphrase-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/passphrase-test.raw
+          sudo udevadm settle
+          printf '%s' 'KingAI-State-Passphrase-2026-Alpha-01' > ci/state-passphrase.key
+          chmod 0600 ci/state-passphrase.key
+          test "$(wc -c < ci/state-passphrase.key)" -ge 32
+          sudo env KINGAI_INSTALLER_ALLOW_WRITE=1 KINGAI_INSTALLER_CI=1 \
+            ./ci/kingai-installer execute \
+              --target /dev/nbd0 \
+              --profile server \
+              --source-root "$PWD/dist/rootfs-server-amd64" \
+              --state-key "$PWD/ci/state-passphrase.key" \
+              --confirm ERASE:/dev/nbd0 > ci/install.json
+          sudo mkdir -p ci/check-root
+          sudo mount /dev/nbd0p2 ci/check-root
+          sudo test ! -e ci/check-root/etc/kingai/state-test.key
+          sudo test ! -e ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
+          sudo grep -Fq 'KINGAI_STATE UUID=' ci/check-root/etc/crypttab
+          sudo grep -Fq ' none luks' ci/check-root/etc/crypttab
+          sudo umount ci/check-root
+          sudo qemu-nbd --disconnect /dev/nbd0
+
+      - name: Boot and answer the real systemd cryptsetup passphrase prompt
+        shell: bash
+        env:
+          STATE_PASSPHRASE: KingAI-State-Passphrase-2026-Alpha-01
+        run: |
+          set -euo pipefail
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd ci/OVMF_VARS-passphrase.fd
+          cat > ci/boot-with-passphrase.exp <<'EOF'
+          log_user 1
+          log_file -noappend ci/qemu-passphrase.log
+          set timeout 240
+          set pass $env(STATE_PASSPHRASE)
+          set seen_prompt 0
+          set seen_success 0
+          spawn qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS-passphrase.fd \
+            -drive file=ci/passphrase-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot
+          expect {
+            -nocase -re {passphrase[^\r\n]*KINGAI_STATE|KINGAI_STATE[^\r\n]*passphrase} {
+              set seen_prompt 1
+              send -- "$pass\r"
+              exp_continue
+            }
+            -exact "KINGAI_PRODUCTION_STATE_UNLOCK_OK" {
+              set seen_success 1
+              exp_continue
+            }
+            eof {
+              if {!$seen_prompt} {
+                puts stderr "system never requested the production STATE passphrase"
+                exit 1
+              }
+              if {!$seen_success} {
+                puts stderr "system never proved encrypted STATE runtime readiness"
+                exit 1
+              }
+              exit 0
+            }
+            timeout {
+              puts stderr "timed out waiting for production STATE unlock proof"
+              exit 1
+            }
+          }
+          EOF
+          expect ci/boot-with-passphrase.exp
+          grep -Fq 'KINGAI_PRODUCTION_STATE_UNLOCK_OK' ci/qemu-passphrase.log
+
+      - name: Cleanup
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/check-root$/ {print $3}' | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
