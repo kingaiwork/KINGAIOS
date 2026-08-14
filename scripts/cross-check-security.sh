@@ -13,8 +13,13 @@ for f in \
   .github/workflows/stability-security-crosscheck.yml \
   .github/workflows/codeql.yml \
   .github/workflows/govulncheck.yml \
+  .github/workflows/smoke-runtime-persistence-migration-vm.yml \
   scripts/check-release-gate-freshness.sh \
   scripts/build-live-iso.sh \
+  cmd/kingai-update/main.go \
+  internal/installer/executor.go \
+  internal/update/executor.go \
+  internal/update/persistence.go \
   systemd/kingaid.service \
   systemd/kingai-execd.service \
   container/Dockerfile; do
@@ -99,6 +104,40 @@ contains systemd/kingai-execd.service 'MemoryMax=128M'
 contains systemd/kingai-execd.service 'TasksMax=32'
 not_contains systemd/kingai-execd.service 'AF_INET'
 not_contains systemd/kingai-execd.service 'AF_INET6'
+
+# Installed runtime data must live on encrypted persistent STATE, never silently
+# fall back to an A/B root slot when STATE is unavailable.
+contains internal/installer/executor.go '/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults 0 2'
+contains internal/installer/executor.go '/var/lib/kingai-state/kingai/runtime/lib /var/lib/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state'
+contains internal/installer/executor.go '/var/lib/kingai-state/kingai/runtime/log /var/log/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state'
+contains internal/installer/executor.go 'kingai/runtime/.layout-v1-ready'
+contains internal/installer/executor.go 'origin=fresh-install'
+not_contains internal/installer/executor.go 'KINGAI_STATE /var/lib/kingai-state ext4 defaults,nofail'
+
+# A/B updates must rewrite the target persistence layout, migrate pre-layout
+# Betas before kingaid starts, and durably persist slot state across power loss.
+contains internal/update/executor.go 'prepareTargetRuntimePersistence(targetRoot, stateMnt, state.ActiveSlot, aUUID, bUUID)'
+contains internal/update/executor.go 'required update tool missing: %s'
+contains internal/update/executor.go '"findmnt"'
+contains internal/update/executor.go 'atomicWriteDurable(path, append(b, '\''\n'\''), 0o600)'
+contains internal/update/persistence.go 'ExecStart=/usr/lib/kingai/kingai-update migrate-state'
+contains internal/update/persistence.go 'Requires=kingai-state-migrate.service'
+contains internal/update/persistence.go 'mount", "-o", "ro"'
+contains internal/update/persistence.go 'migration source unexpectedly resolves to the current root'
+contains internal/update/persistence.go 'tmp.Sync()'
+contains internal/update/persistence.go 'os.Rename(tmpName, path)'
+contains internal/update/persistence.go 'syncDir(filepath.Dir(path))'
+contains cmd/kingai-update/main.go 'case "migrate-state"'
+contains cmd/kingai-update/main.go 'kingupdate.MigrateRuntimeState()'
+
+# The exact legacy migration path is a release evidence requirement and its VM
+# workflow must use immutable GitHub Action revisions.
+contains scripts/check-release-gate-freshness.sh "require_fresh runtime-persistence 'smoke-runtime-persistence-migration-vm.yml'"
+contains .github/workflows/smoke-runtime-persistence-migration-vm.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
+contains .github/workflows/smoke-runtime-persistence-migration-vm.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+contains .github/workflows/smoke-runtime-persistence-migration-vm.yml 'KINGAI_RUNTIME_STATE_MIGRATION_OK'
+contains .github/workflows/smoke-runtime-persistence-migration-vm.yml 'defaults,nofail'
+contains .github/workflows/smoke-runtime-persistence-migration-vm.yml 'source_slot=A'
 
 # Container default must remain fixed non-root with Unix-socket management only.
 contains container/Dockerfile 'ARG GO_IMAGE=golang:1.25.13-bookworm'
