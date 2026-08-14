@@ -2,8 +2,11 @@ name: KINGAI OS Container Release
 
 on:
   push:
-    tags:
-      - container-v*
+    branches:
+      - main
+    paths:
+      - .release/container-beta.json
+      - .release/container-rc.json
   workflow_dispatch:
     inputs:
       version:
@@ -47,12 +50,17 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            version="${GITHUB_REF_NAME#container-v}"
-            case "$version" in
-              *-beta.*) channel=beta ;;
-              *-rc.*) channel=rc ;;
-              *) channel=stable ;;
-            esac
+            changed=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
+            if grep -qx '.release/container-beta.json' <<<"$changed"; then
+              request=.release/container-beta.json
+            elif grep -qx '.release/container-rc.json' <<<"$changed"; then
+              request=.release/container-rc.json
+            else
+              echo "container release push did not change a recognized request file" >&2
+              exit 2
+            fi
+            version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$request")
+            channel=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["channel"])' "$request")
           else
             test "$GITHUB_REF" = "refs/heads/main" || { echo "manual releases must run from main" >&2; exit 2; }
             version='${{ inputs.version }}'
@@ -72,14 +80,23 @@ jobs:
             exit 2
           }
 
-          if [[ "$channel" == "stable" ]]; then
-            python3 - <<'PY'
-          import json
+          python3 - "$channel" <<'PY'
+          import json, sys
           gates = json.load(open('release/gates.json', encoding='utf-8'))
-          if gates.get('production_signing_ready') is not True:
+          channel = sys.argv[1]
+          required = [
+              'container_image_ci',
+              'container_multiarch_ci',
+              'container_security_scan_ci',
+              'container_oci_archive_ci',
+              'container_release_pipeline',
+          ]
+          missing = [key for key in required if gates.get(key) is not True]
+          if missing:
+              raise SystemExit('container release gates incomplete: ' + ', '.join(missing))
+          if channel == 'stable' and gates.get('production_signing_ready') is not True:
               raise SystemExit('stable release blocked: production_signing_ready=false')
           PY
-          fi
 
           tags="$IMAGE:$version"
           case "$channel" in
@@ -97,6 +114,53 @@ jobs:
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Build amd64 preflight image
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/amd64 \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --tag kingai-os:release-scan-amd64 \
+            --load \
+            .
+
+      - name: Scan amd64 preflight image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: kingai-os:release-scan-amd64
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+
+      - name: Build arm64 preflight image
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker buildx build \
+            --file container/Dockerfile \
+            --platform linux/arm64 \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "REVISION=$GITHUB_SHA" \
+            --tag kingai-os:release-scan-arm64 \
+            --load \
+            .
+
+      - name: Scan arm64 preflight image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: kingai-os:release-scan-arm64
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          skip-setup-trivy: true
 
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -128,23 +192,13 @@ jobs:
           echo "image_ref=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
           docker buildx imagetools inspect "$IMAGE@$digest"
 
-      - name: Generate CycloneDX SBOM
+      - name: Generate CycloneDX SBOM evidence
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.push.outputs.image_ref }}
           format: cyclonedx
           output: kingai-os.cdx.json
           exit-code: '0'
-
-      - name: Block fixable critical vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ steps.push.outputs.image_ref }}
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL
           skip-setup-trivy: true
 
       - name: Generate GitHub build provenance
@@ -213,6 +267,8 @@ jobs:
               'runtime_uid': 10001,
               'runtime_gid': 10001,
               'persistent_paths': ['/var/lib/kingai', '/var/log/kingai'],
+              'buildkit_sbom': True,
+              'buildkit_provenance': True,
               'sbom': f'kingai-os-{version}.cdx.json',
               'provenance': 'github-artifact-attestation',
               'signature': 'sigstore-keyless-cosign',
