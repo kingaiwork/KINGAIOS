@@ -12,6 +12,8 @@ VERSION="$(tr -d '[:space:]' < VERSION)"
 [[ -f "$UEFI_PKG_FILE" ]] || { echo "missing $UEFI_PKG_FILE" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "python3 is required" >&2; exit 1; }
 command -v chroot >/dev/null || { echo "chroot is required" >&2; exit 1; }
+command -v sha256sum >/dev/null || { echo "sha256sum is required" >&2; exit 1; }
+base_sha_before=$(sha256sum "$BASE_PKG_FILE" | awk '{print $1}')
 
 # The generic IoT foundation intentionally remains minbase and does not carry
 # apt or a kernel. For this explicit board-release build only, construct a
@@ -50,6 +52,12 @@ install -m0644 "$combined" "$BASE_PKG_FILE"
 KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh iot amd64 "$OUT"
 restore_package_manifest
 trap - EXIT
+
+base_sha_after=$(sha256sum "$BASE_PKG_FILE" | awk '{print $1}')
+[[ "$base_sha_after" == "$base_sha_before" ]] || {
+  echo "Generic IoT package manifest was not restored after board build" >&2
+  exit 1
+}
 
 [[ -d "$ROOT" ]] || { echo "missing IoT rootfs: $ROOT" >&2; exit 1; }
 
@@ -94,12 +102,5 @@ done
 [[ "$(readlink "$ROOT/etc/systemd/system/default.target")" == "/usr/lib/systemd/system/multi-user.target" ]]
 [[ ! -e "$ROOT/usr/lib/kingai/kingai-execd" ]]
 [[ ! -e "$ROOT/usr/lib/kingai/kingai-installer" ]]
-
-# Prove the source package manifest was restored; the board variant must never
-# silently widen future generic IoT builds in the same checkout.
-cmp -s "$BASE_PKG_FILE" "$backup" 2>/dev/null && {
-  echo "internal error: temporary package backup unexpectedly survived" >&2
-  exit 1
-} || true
 
 echo "Built KINGAI OS IoT Generic UEFI amd64 board rootfs: $ROOT"
