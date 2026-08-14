@@ -1,0 +1,34 @@
+profile: container
+name: KINGAI OS Container
+version_source: VERSION
+base:
+  lineage: ubuntu-26.04-lts
+  architecture:
+    - amd64
+    - arm64
+features:
+  desktop: false
+  headless: true
+  systemd_required: false
+  docker: true
+  oci: true
+  local_ai_runtime: optional
+  persistent_state: true
+  unix_socket_api: true
+kingai:
+  cli: true
+  daemon: true
+  policy_engine: true
+  approval_broker: true
+  task_graph: true
+  model_fabric: true
+  memory_fabric: true
+  agent_runtime: true
+  audit: true
+size_budget_mib:
+  target: 300
+  warning: 450
+  hard: 650
+artifact:
+  format: oci-image
+  name: ghcr.io/kingaiwork/kingai-os:${VERSION}
