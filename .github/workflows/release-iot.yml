@@ -1,0 +1,115 @@
+name: KINGAI OS IoT Edge Build-Test-Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Edge architecture
+        required: true
+        default: arm64
+        type: choice
+        options: [arm64, amd64]
+      channel:
+        description: Generic Edge release channel
+        required: true
+        default: dev
+        type: choice
+        options: [dev, beta, rc, stable]
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  generic-edge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Enforce generic Edge channel boundary
+        shell: bash
+        run: |
+          channel='${{ inputs.channel }}'
+          if [[ "$channel" == rc || "$channel" == stable ]]; then
+            echo 'RC/Stable IoT releases are reserved for hardware-verified bootable board releases. The current generic Edge artifact is intentionally bootable:false.' >&2
+            exit 1
+          fi
+      - name: Test Edge control plane
+        run: |
+          go mod verify
+          go test ./internal/devicepack ./internal/deviceidentity ./internal/update ./internal/policy ./internal/agent ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update
+          go vet ./internal/devicepack ./internal/deviceidentity ./internal/update ./sdk/edgehandler ./cmd/kingaid ./cmd/kingai-update
+          go run ./tools/ci/validate-device-pack-template iot/templates/*.json
+          bash -n scripts/*.sh
+      - name: Gate beta on verified software evidence
+        if: inputs.channel == 'beta'
+        shell: bash
+        run: |
+          jq -e '.iot_edge_runtime_ci==true and .iot_device_pack_crypto_ci==true and .iot_edge_ota_targeting_ci==true' release/gates.json >/dev/null || {
+            echo 'IoT beta software gates are not yet verified.' >&2
+            exit 1
+          }
+          bash scripts/check-release-gate-freshness.sh beta iot
+      - name: Install Edge image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap ubuntu-keyring zstd qemu-user-static binfmt-support e2fsprogs xz-utils jq
+          sudo update-binfmts --enable qemu-aarch64 || true
+      - name: Build IoT rootfs
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh iot '${{ inputs.arch }}' dist
+      - name: Build generic Edge filesystem image
+        run: sudo bash scripts/build-iot-image.sh '${{ inputs.arch }}' dist
+      - name: Validate generic artifact boundary
+        id: artifact
+        shell: bash
+        run: |
+          sudo chown -R "$USER:$USER" dist
+          img=$(find dist -maxdepth 1 -name 'KINGAI-OS-IoT-*-${{ inputs.arch }}.img.xz' -print -quit)
+          test -s "$img"
+          sha256sum -c "$img.sha256"
+          jq -e '.product=="KINGAI OS" and .edition=="IoT / Edge" and .bootable==false and .device_pack_required==true and .arch=="${{ inputs.arch }}"' "$img.manifest.json" >/dev/null
+          bytes=$(stat -c '%s' "$img")
+          (( bytes <= 943718400 )) || { echo 'IoT hard image budget exceeded (900 MiB).' >&2; exit 1; }
+          echo "img=$img" >> "$GITHUB_OUTPUT"
+      - name: Prepare generic Edge prerelease
+        id: release
+        shell: bash
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          base_version=$(bash scripts/release-base-version.sh "$version")
+          channel='${{ inputs.channel }}'
+          arch='${{ inputs.arch }}'
+          tag="v${base_version}-iot-${arch}-${channel}.${GITHUB_RUN_NUMBER}"
+          title="KINGAI OS ${base_version} IoT Edge ${arch} ${channel^}"
+          cat > release-notes-iot.md <<EOF
+          # KINGAI OS ${base_version} — IoT / Edge ${arch} ${channel^}
+
+          - Artifact: generic compressed ext4 Edge root filesystem
+          - Architecture: ${arch}
+          - Channel: ${channel}
+          - Source commit: ${GITHUB_SHA}
+          - Device Pack required: yes
+          - Bootable board image: no
+          - Hardware certification claim: none
+          - Policy / Approval / Task / Memory / Model / Audit: included
+          - Signed Device Pack runtime and Edge OTA target verification: included
+
+          This generic artifact is a governed Edge software foundation. Use a hardware-specific signed Device Pack and complete `iot/HIL-GATES.md` before making a board-support claim.
+          EOF
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+      - name: Publish generic Edge prerelease
+        shell: bash
+        run: |
+          img='${{ steps.artifact.outputs.img }}'
+          gh release create '${{ steps.release.outputs.tag }}' --target "$GITHUB_SHA" --prerelease \
+            --title '${{ steps.release.outputs.title }}' --notes-file release-notes-iot.md \
+            "$img" "$img.sha256" "$img.manifest.json"
