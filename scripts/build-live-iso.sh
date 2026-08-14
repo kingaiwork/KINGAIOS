@@ -19,9 +19,9 @@ ISO_ROOT="${WORK}/iso"
 ISO="${OUT}/KINGAI-OS-${PROFILE^}-${ARTIFACT_VERSION}-${ARCH}.iso"
 SBOM="$ROOT/usr/share/kingai/legal/KINGAI-OS.spdx.json"
 
-case "$PROFILE" in server|desktop|recovery) ;; *) echo "live ISO supports server, desktop or recovery" >&2; exit 2;; esac
+case "$PROFILE" in server|desktop|recovery|sentinel) ;; *) echo "live ISO supports server, desktop, recovery or sentinel" >&2; exit 2;; esac
 for tool in mksquashfs grub-mkrescue xorriso md5sum; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }; done
-[[ -d "$ROOT" ]] || { echo "missing $ROOT; run scripts/build-rootfs.sh $PROFILE amd64 $OUT first" >&2; exit 1; }
+[[ -d "$ROOT" ]] || { echo "missing $ROOT; build the matching rootfs first" >&2; exit 1; }
 [[ -f "$SBOM" ]] || { echo "missing SBOM: $SBOM" >&2; exit 1; }
 KERNEL=$(find "$ROOT/boot" -maxdepth 1 -name 'vmlinuz-*' -printf '%p\n' | sort -V | tail -1)
 INITRD=$(find "$ROOT/boot" -maxdepth 1 -name 'initrd.img-*' -printf '%p\n' | sort -V | tail -1)
@@ -40,6 +40,9 @@ if [[ "$PROFILE" == "recovery" ]]; then
   EXTRA="systemd.unit=multi-user.target"
 elif [[ "$PROFILE" == "server" ]]; then
   MENU="Try / Install KINGAI OS Server"
+  EXTRA="quiet splash"
+elif [[ "$PROFILE" == "sentinel" ]]; then
+  MENU="Try / Install KINGAI OS Sentinel"
   EXTRA="quiet splash"
 else
   MENU="Try KINGAI OS ${PROFILE^}"
@@ -69,7 +72,7 @@ import hashlib, json, os, sys
 path, profile, version, source_version, channel, size, sbom_sha = sys.argv[1:]
 with open(path, "rb") as f:
     sha = hashlib.file_digest(f, "sha256").hexdigest()
-installable = profile == "server"
+installable = profile in {"server", "sentinel"}
 stage = "installable-preview" if installable else "developer-foundation"
 manifest = {
     "product": "KINGAI OS",
@@ -103,8 +106,8 @@ PY
 echo "Built $ISO ($(numfmt --to=iec "$SIZE"))"
 if [[ "$PROFILE" == "recovery" ]]; then
   echo "Offline Recovery ISO: no SSH service, no automatic agent/update daemon."
-elif [[ "$PROFILE" == "server" ]]; then
-  echo "Installable Server Preview: use sudo kingai-install from the live session; Beta/Stable release gates remain enforced."
+elif [[ "$PROFILE" == "server" || "$PROFILE" == "sentinel" ]]; then
+  echo "Installable ${PROFILE^} Preview: use sudo kingai-install from the live session; Beta/Stable release gates remain enforced."
 else
   echo "Developer Live ISO: production release gates remain enforced."
 fi
