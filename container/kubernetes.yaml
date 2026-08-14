@@ -47,7 +47,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kingai
-          image: ghcr.io/kingaiwork/kingai-os:dev
+          image: ghcr.io/kingaiwork/kingai-os:beta
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -55,13 +55,30 @@ spec:
             capabilities:
               drop:
                 - ALL
+          startupProbe:
+            exec:
+              command:
+                - /usr/bin/kingai
+                - model
+                - status
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - /usr/bin/kingai
+                - model
+                - status
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
             exec:
               command:
                 - /usr/bin/kingai
                 - model
                 - status
-            initialDelaySeconds: 5
             periodSeconds: 30
             timeoutSeconds: 3
             failureThreshold: 3
@@ -91,6 +108,20 @@ spec:
         - name: runtime
           emptyDir:
             medium: Memory
+            sizeLimit: 16Mi
         - name: tmp
           emptyDir:
             medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kingai-os-deny-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: kingai-os
+  policyTypes:
+    - Ingress
+  ingress: []
