@@ -90,11 +90,14 @@ contains .github/workflows/release.yml '.protected_branch==true and .rollback_dr
 contains .github/workflows/release.yml '.secure_boot==true'
 contains .github/workflows/release.yml 'Reject stale verification evidence'
 
-# Server ISO must stay explicitly installable without pretending production Secure Boot.
-contains scripts/build-live-iso.sh 'installable = profile == "server"'
+# Installable profiles must remain explicit and production Secure Boot must stay false
+# until the production signing chain is implemented and proven.
+contains scripts/build-live-iso.sh 'installable = profile in {"server", "sentinel"}'
 contains scripts/build-live-iso.sh '"secure_boot": False'
 contains scripts/build-live-iso.sh 'GPT+EFI+ROOT_A+ROOT_B+LUKS_STATE'
 contains scripts/build-live-iso.sh 'confirmation": "ERASE:<target>"'
+contains scripts/build-live-iso.sh 'MENU="Try / Install KINGAI OS Server"'
+contains scripts/build-live-iso.sh 'MENU="Try / Install KINGAI OS Sentinel"'
 
 # Fail on accidental obvious TCP management binding in system service definitions.
 if grep -REn '(^|[[:space:]])(0\.0\.0\.0|\[::\]|127\.0\.0\.1):[0-9]+|ListenStream=[0-9]+' systemd; then
