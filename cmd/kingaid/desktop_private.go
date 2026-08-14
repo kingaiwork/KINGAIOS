@@ -10,7 +10,14 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
 )
 
-func registerDesktopPrivateHandler(mux *http.ServeMux, taskStore taskgraph.Store, memoryStore memory.FileStore, registry agent.Registry, buildVersion string) {
+func registerDesktopPrivateHandler(mux *http.ServeMux, taskStore taskgraph.Store, memoryStore memory.FileStore, buildVersion string, suppliedRegistry ...agent.Registry) {
+	registry := agent.Default()
+	if len(suppliedRegistry) > 0 {
+		registry = suppliedRegistry[0]
+	} else if loaded, err := agent.Load(getenv("KINGAI_AGENTS", "/etc/kingai/agents.json")); err == nil {
+		registry = loaded
+	}
+
 	mux.HandleFunc("/v1/desktop/private", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
