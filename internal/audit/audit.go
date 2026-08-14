@@ -20,7 +20,7 @@ type Event struct {
 	Risk             int       `json:"risk,omitempty"`
 	PeerUID          uint32    `json:"peer_uid,omitempty"`
 	TargetHash       string    `json:"target_hash,omitempty"`
-	DurationMS       int64     `json:"duration_ms,omitempty"`
+	DurationMS       int64     `json:"duration_ms"`
 	Reason           string    `json:"reason,omitempty"`
 }
 
