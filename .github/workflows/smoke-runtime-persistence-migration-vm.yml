@@ -179,8 +179,9 @@ jobs:
           set -e
           cat ci/qemu-migrate.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
-          grep -Fq 'KINGAI encrypted runtime STATE migration: ready' ci/qemu-migrate.log
-          grep -Fq 'KINGAI A/B health: update-confirmed' ci/qemu-migrate.log
+          # Ordinary systemd service stdout belongs to the journal, not ttyS0.
+          # The CI marker writes directly to ttyS0 only after migration, health
+          # confirmation and encrypted bind-mount checks have all succeeded.
           grep -Fq 'KINGAI_RUNTIME_STATE_MIGRATION_OK' ci/qemu-migrate.log
 
       - name: Verify migrated data lives inside encrypted STATE
