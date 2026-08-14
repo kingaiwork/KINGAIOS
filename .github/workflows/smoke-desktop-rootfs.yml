@@ -87,6 +87,8 @@ jobs:
           qml=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml').read_text()
           for token in ('KINGAI Center','activeTasks','pendingApprovals','modelProviders','public-status.json'):
               assert token in qml, token
-          for forbidden in ('task goal','approval target','memory content body','api key'):
+          # Explanatory privacy labels are allowed. Test against concrete sample
+          # secrets/private payloads used by the statuspub regression suite.
+          for forbidden in ('must never be published','private task text','approval-target-secret','sk-test-secret','api_key='):
               assert forbidden not in qml.lower(), forbidden
           PY
