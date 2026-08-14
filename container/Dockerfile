@@ -3,7 +3,7 @@
 ARG GO_IMAGE=golang:1.25-bookworm
 ARG BASE_IMAGE=ubuntu:26.04
 
-FROM ${GO_IMAGE} AS build
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
