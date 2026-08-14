@@ -2,6 +2,6 @@
   "profile": "sentinel",
   "channel": "dev",
   "requested_at": "2026-08-14",
-  "attempt": 1,
-  "reason": "Publish first governed KINGAI OS Sentinel Developer Preview with installable Live ISO, cloud/server RootFS, QEMU BIOS/UEFI boot evidence, SPDX SBOM and scope-bound authorized validation"
+  "attempt": 2,
+  "reason": "Republish KINGAI OS Sentinel Developer Preview with idempotent prerelease creation, superseding-release concurrency, installable Live ISO, cloud/server RootFS, QEMU BIOS/UEFI evidence and SPDX SBOM"
 }
