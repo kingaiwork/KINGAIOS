@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG GO_IMAGE=golang:1.25-bookworm
+ARG GO_IMAGE=golang:1.25.13-bookworm
 ARG BASE_IMAGE=ubuntu:26.04
 ARG VERSION
 
