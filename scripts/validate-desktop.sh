@@ -12,16 +12,28 @@ cd "$ROOT"
 
 for path in \
   desktop/intelligence/Main.qml \
+  desktop/intelligence/TaskCenter.qml \
   desktop/intelligence/launch.sh \
+  cmd/kingai-desktop-bridge/main.go \
+  cmd/kingai-desktop-bridge/main_test.go \
+  distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service \
+  distro/overlay/etc/xdg/autostart/kingai-desktop-bridge.desktop \
   distro/overlay/usr/share/applications/kingai-intelligence.desktop \
+  distro/overlay/usr/share/applications/kingai-desktop-experience.desktop \
   distro/overlay/etc/xdg/mimeapps.list; do
-  [[ -f "$path" ]] || { echo "missing Desktop Phase 2 asset: $path" >&2; exit 1; }
+  [[ -f "$path" ]] || { echo "missing Desktop asset: $path" >&2; exit 1; }
 done
 
 bash -n desktop/intelligence/launch.sh
+bash -n desktop/welcome/launch.sh
 
 grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
 grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
+grep -q '^Exec=/usr/lib/kingai/kingai-welcome --settings$' distro/overlay/usr/share/applications/kingai-desktop-experience.desktop
+grep -q '^ExecStart=/usr/lib/kingai/kingai-desktop-bridge$' distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service
+grep -q '^UMask=0077$' distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service
+grep -q '^RestrictAddressFamilies=AF_UNIX$' distro/overlay/usr/lib/systemd/user/kingai-desktop-bridge.service
+grep -q '^Exec=systemctl --user start kingai-desktop-bridge.service$' distro/overlay/etc/xdg/autostart/kingai-desktop-bridge.desktop
 
 python3 - <<'PY'
 import json
@@ -93,10 +105,16 @@ shell = Path("desktop/intelligence/Main.qml").read_text()
 for center in ("home", "agents", "tasks", "approvals", "memory", "models", "automations", "health"):
     if f'id: "{center}"' not in shell:
         raise SystemExit(f"KINGAI Intelligence shell missing center: {center}")
-if 'file:///run/kingai/public-status.json' not in shell:
-    raise SystemExit("KINGAI Intelligence shell must use the sanitized public runtime status channel")
-if 'Application.arguments' not in shell:
-    raise SystemExit("KINGAI Intelligence shell must use the Qt Application.arguments interface")
+for token in (
+    'file:///run/kingai/public-status.json',
+    'Application.arguments',
+    'TaskCenter {',
+    'running_tasks',
+    'waiting_approval_tasks',
+    'blocked_tasks',
+):
+    if token not in shell:
+        raise SystemExit(f"KINGAI Intelligence shell missing required token: {token}")
 for forbidden in (
     "/v1/memory/list",
     "/v1/approval/list",
@@ -108,6 +126,60 @@ for forbidden in (
 ):
     if forbidden.lower() in shell.lower():
         raise SystemExit(f"KINGAI Intelligence public shell contains forbidden direct/sensitive pattern: {forbidden}")
+
+task_center = Path("desktop/intelligence/TaskCenter.qml").read_text()
+for token in (
+    'StandardPaths.RuntimeLocation',
+    '/kingai/desktop-private.json',
+    'snapshot.schema !== 1',
+    'ageMs > 15000',
+):
+    if token not in task_center:
+        raise SystemExit(f"Task Center missing private-bridge safety token: {token}")
+for forbidden in (
+    '/var/lib/kingai/tasks',
+    '/v1/tasks/list',
+    '/v1/approval/list',
+    '/v1/memory/list',
+):
+    if forbidden in task_center:
+        raise SystemExit(f"Task Center bypasses the private bridge: {forbidden}")
+
+bridge = Path("cmd/kingai-desktop-bridge/main.go").read_text()
+for token in (
+    '"/v1/tasks/list"',
+    'ListForPeer',
+    '0o600',
+    '0o700',
+    'XDG_RUNTIME_DIR',
+    'refuses to run as root',
+    'truncateText',
+):
+    # ListForPeer is intentionally enforced in kingaid, not called by the bridge.
+    if token == 'ListForPeer':
+        continue
+    if token not in bridge:
+        raise SystemExit(f"Desktop Bridge missing security contract token: {token}")
+for forbidden in (
+    'step.Target',
+    'step.Capability',
+    'step.ApprovalID',
+    'step.Result',
+    'step.Error',
+):
+    if forbidden in bridge:
+        raise SystemExit(f"Desktop Bridge must not copy raw step data: {forbidden}")
+
+layouts = {
+    'kingai-intelligence.js': 'kingai-intelligence',
+    'kingai-flow.js': 'kingai-flow',
+    'kingai-classic.js': 'kingai-classic',
+}
+for filename, experience in layouts.items():
+    text = (Path('desktop/layouts') / filename).read_text()
+    for token in ('kingaiManaged', 'clearWidgets', 'widget.remove()', experience):
+        if token not in text:
+            raise SystemExit(f"{filename}: managed layout contract missing {token}")
 
 launch = Path("desktop/intelligence/launch.sh").read_text()
 if 'Main.qml -- --center' not in launch:
