@@ -4,9 +4,27 @@ on:
   pull_request:
     paths:
       - .github/workflows/container.yml
+      - .dockerignore
       - container/**
       - profiles/container.yaml
       - scripts/build-container.sh
+      - scripts/test-container.sh
+      - cmd/kingai/**
+      - cmd/kingaid/**
+      - internal/**
+      - configs/**
+      - go.mod
+      - go.sum
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/container.yml
+      - .dockerignore
+      - container/**
+      - profiles/container.yaml
+      - scripts/build-container.sh
+      - scripts/test-container.sh
       - cmd/kingai/**
       - cmd/kingaid/**
       - internal/**
@@ -31,20 +49,31 @@ permissions:
   packages: write
 
 jobs:
-  multiarch:
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare Buildx
-        run: |
-          docker buildx create --name kingai-builder --use
-          docker buildx inspect --bootstrap
+      - name: Build and smoke test hardened amd64 container
+        run: bash scripts/test-container.sh
+
+  multiarch:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Verify multi-architecture image build
-        if: ${{ github.event_name == 'pull_request' || !inputs.publish }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.publish }}
         run: |
+          version=$(tr -d '[:space:]' < VERSION)
           docker buildx build \
             --file container/Dockerfile \
             --platform linux/amd64,linux/arm64 \
+            --build-arg "VERSION=$version" \
+            --build-arg "REVISION=$GITHUB_SHA" \
             --output type=cacheonly \
             .
       - name: Login to GHCR
@@ -59,9 +88,12 @@ jobs:
           case "$TAG" in
             stable|latest|rc|release) echo "protected production-like tag is not allowed from this developer workflow" >&2; exit 2 ;;
           esac
+          version=$(tr -d '[:space:]' < VERSION)
           docker buildx build \
             --file container/Dockerfile \
             --platform linux/amd64,linux/arm64 \
+            --build-arg "VERSION=$version" \
+            --build-arg "REVISION=$GITHUB_SHA" \
             --provenance=true \
             --sbom=true \
             --tag "$IMAGE:$TAG" \
