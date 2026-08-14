@@ -76,9 +76,9 @@ jobs:
           sudo test -L "$root/etc/systemd/system/multi-user.target.wants/kingaid.service"
           sudo test -L "$root/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
           sudo test -f "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$root/usr/lib/systemd/system/kingaid.service"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=16$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
-          grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$root/usr/lib/systemd/system/kingaid.service"
           grep -q '^NAME="KINGAI OS"' "$root/usr/lib/os-release"
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
       - name: Build generic Edge filesystem image
