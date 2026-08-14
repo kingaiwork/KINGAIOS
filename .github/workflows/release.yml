@@ -80,18 +80,25 @@ jobs:
           test -z "$leaked" || { echo "build-host UID leaked into rootfs content: $leaked"; exit 1; }
           test "$(sudo stat -c '%u:%g' "$root")" = "0:0"
       - name: Build KINGAI Live ISO
-        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh "${{ steps.params.outputs.profile }}" dist
+        env:
+          KINGAI_RELEASE_CHANNEL: ${{ steps.params.outputs.channel }}
+        run: sudo --preserve-env=PATH,KINGAI_RELEASE_CHANNEL bash scripts/build-live-iso.sh "${{ steps.params.outputs.profile }}" dist
       - name: Normalize artifact ownership
         run: sudo chown -R "$USER:$USER" dist
       - name: Validate artifact metadata and SPDX SBOM
         id: artifact
         shell: bash
         run: |
+          channel='${{ steps.params.outputs.channel }}'
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit); test -s "$iso"; sha256sum -c "$iso.sha256"
           manifest="$iso.manifest.json"; sbom="$iso.spdx.json"; test -s "$sbom"
           jq -e '.spdxVersion == "SPDX-2.3" and .SPDXID == "SPDXRef-DOCUMENT"' "$sbom" >/dev/null
-          jq -e '.product == "KINGAI OS" and .sbom.format == "SPDX-2.3"' "$manifest" >/dev/null
+          jq -e --arg channel "$channel" '.product == "KINGAI OS" and .sbom.format == "SPDX-2.3" and .release_channel == $channel' "$manifest" >/dev/null
           test "$(jq -r '.sbom.sha256' "$manifest")" = "$(sha256sum "$sbom" | awk '{print $1}')"
+          case "$channel" in
+            beta|rc) [[ "$(basename "$iso")" == *"-${channel}-amd64.iso" ]] || { echo "artifact filename does not encode ${channel} channel" >&2; exit 1; } ;;
+            stable) [[ "$(basename "$iso")" != *'-dev-'* && "$(basename "$iso")" != *'-beta-'* && "$(basename "$iso")" != *'-rc-'* ]] || { echo 'stable artifact filename contains a preview channel' >&2; exit 1; } ;;
+          esac
           bytes=$(stat -c '%s' "$iso")
           echo "iso=$iso" >> "$GITHUB_OUTPUT"; echo "manifest=$manifest" >> "$GITHUB_OUTPUT"; echo "sbom=$sbom" >> "$GITHUB_OUTPUT"; echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
           if (( bytes >= 2147483648 )); then echo "large=true" >> "$GITHUB_OUTPUT"; else echo "large=false" >> "$GITHUB_OUTPUT"; fi
