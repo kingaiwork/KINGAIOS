@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "device_id": "edge-00000001",
+  "board_id": "generic-uefi-amd64",
+  "class": "gateway",
+  "fleet": "lab",
+  "update_channel": "beta",
+  "provisioning": "manual",
+  "attestation": "tpm2",
+  "labels": {
+    "site": "lab-a",
+    "role": "edge-gateway"
+  }
+}

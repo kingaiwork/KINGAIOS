@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os.kingai.work/schema/device-identity-v1.json",
+  "title": "KINGAI OS Edge Device Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "device_id", "board_id", "class", "update_channel", "provisioning", "attestation"],
+  "properties": {
+    "schema": {"const": 1},
+    "device_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{7,63}$"},
+    "board_id": {"type": "string", "minLength": 1, "maxLength": 160},
+    "class": {"enum": ["gateway", "robot", "industrial-pc", "embedded", "appliance", "developer"]},
+    "fleet": {"type": "string", "maxLength": 128},
+    "update_channel": {"enum": ["stable", "beta", "dev", "pinned"]},
+    "provisioning": {"enum": ["factory", "manual", "fleet"]},
+    "attestation": {"enum": ["none", "tpm2", "secure-element", "tee"]},
+    "labels": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {"pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"},
+      "additionalProperties": {"type": "string", "maxLength": 160}
+    }
+  }
+}
