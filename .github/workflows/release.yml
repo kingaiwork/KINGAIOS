@@ -19,6 +19,7 @@ on:
     branches: [main]
     paths:
       - '.release/server-dev.json'
+      - '.release/server-beta.json'
 
 permissions:
   contents: write
@@ -46,8 +47,18 @@ jobs:
         id: params
         shell: bash
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then profile=server; channel=dev; else profile='${{ inputs.profile }}'; channel='${{ inputs.channel }}'; test -n "$profile" || profile=server; test -n "$channel" || channel=dev; fi
-          echo "profile=$profile" >> "$GITHUB_OUTPUT"; echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            profile=server
+            changed=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
+            if grep -qx '.release/server-beta.json' <<<"$changed"; then channel=beta; else channel=dev; fi
+          else
+            profile='${{ inputs.profile }}'
+            channel='${{ inputs.channel }}'
+            test -n "$profile" || profile=server
+            test -n "$channel" || channel=dev
+          fi
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
       - name: Run core release tests
         run: |
           go mod verify
@@ -91,7 +102,7 @@ jobs:
           manifest='${{ steps.artifact.outputs.manifest }}'
           if [[ "$channel" == beta || "$channel" == rc || "$channel" == stable ]]; then
             test -f release/gates.json || { echo 'non-dev release requires release/gates.json' >&2; exit 1; }
-            jq -e '.installer_vm==true and .ab_update_vm==true and .recovery_vm==true and .tuf_client==true' release/gates.json >/dev/null || { echo 'Beta functional gate incomplete' >&2; exit 1; }
+            jq -e '.installer_vm==true and .installable_live_iso_vm==true and .ab_update_vm==true and .recovery_vm==true and .tuf_client==true' release/gates.json >/dev/null || { echo 'Beta functional gate incomplete' >&2; exit 1; }
             jq -e '.installable==true and (.stage != "developer-foundation")' "$manifest" >/dev/null || { echo 'Beta/RC/Stable publishing requires a non-developer installable artifact; current Live ISO is not eligible.' >&2; exit 1; }
           fi
           if [[ "$channel" == rc || "$channel" == stable ]]; then
@@ -145,7 +156,8 @@ jobs:
           - Architecture: amd64
           - Channel: ${channel}
           - Source commit: ${GITHUB_SHA}
-          - BIOS and UEFI boot: verified in this workflow
+          - BIOS and UEFI Live boot: verified in this workflow
+          - Exact Live ISO installation path: required for Beta and above
           - SPDX 2.3 SBOM: included
           - A/B, installer, Recovery and TUF gates: enforced by channel policy and commit-aware evidence freshness
           - Production signing secrets: never embedded in source
