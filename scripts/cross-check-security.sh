@@ -7,10 +7,12 @@ contains() { grep -Fq -- "$2" "$1" || fail "$1 missing invariant: $2"; }
 not_contains() { ! grep -Fq -- "$2" "$1" || fail "$1 contains forbidden invariant: $2"; }
 
 for f in \
+  go.mod \
   release/gates.json \
   .github/workflows/release.yml \
   .github/workflows/stability-security-crosscheck.yml \
   .github/workflows/codeql.yml \
+  .github/workflows/govulncheck.yml \
   scripts/check-release-gate-freshness.sh \
   scripts/build-live-iso.sh \
   systemd/kingaid.service \
@@ -21,6 +23,7 @@ done
 
 python3 - <<'PY'
 import json
+import re
 from pathlib import Path
 
 p = Path('release/gates.json')
@@ -38,16 +41,26 @@ for key in required_bool:
     if key not in g or not isinstance(g[key], bool):
         raise SystemExit(f'cross-check: gate {key!r} must exist and be boolean')
 
-# Functional Beta evidence must remain complete once an installable Beta is published.
 for key in ('installer_vm','installable_live_iso_vm','ab_update_vm','recovery_vm','tuf_client'):
     if g[key] is not True:
         raise SystemExit(f'cross-check: published installable Beta requires {key}=true')
 
-# Never infer production readiness from test-only Secure Boot evidence.
 if g['production_signing_ready'] and not g['tuf_repository']:
     raise SystemExit('cross-check: production signing cannot be ready before production TUF repository')
 if g['r2_delivery'] and not g['production_signing_ready']:
     raise SystemExit('cross-check: production delivery cannot precede production signing readiness')
+
+# Keep host CI and container builds on the same security-patched Go line.
+gomod = Path('go.mod').read_text()
+m = re.search(r'^go\s+(\d+\.\d+\.\d+)\s*$', gomod, re.M)
+if not m:
+    raise SystemExit('cross-check: go.mod must pin an exact patch Go version')
+go_version = m.group(1)
+if go_version != '1.25.13':
+    raise SystemExit(f'cross-check: expected security toolchain go1.25.13, found go{go_version}')
+docker = Path('container/Dockerfile').read_text()
+if f'ARG GO_IMAGE=golang:{go_version}-bookworm' not in docker:
+    raise SystemExit('cross-check: container Go builder must match the go.mod security patch version')
 
 # CodeQL tracing must initialize only after the exact Go toolchain is installed.
 codeql = Path('.github/workflows/codeql.yml').read_text()
@@ -88,6 +101,7 @@ not_contains systemd/kingai-execd.service 'AF_INET'
 not_contains systemd/kingai-execd.service 'AF_INET6'
 
 # Container default must remain fixed non-root with Unix-socket management only.
+contains container/Dockerfile 'ARG GO_IMAGE=golang:1.25.13-bookworm'
 contains container/Dockerfile 'ARG KINGAI_UID=10001'
 contains container/Dockerfile 'ARG KINGAI_GID=10001'
 contains container/Dockerfile 'KINGAI_SOCKET=/run/kingai/kingaid.sock'
@@ -102,8 +116,9 @@ contains .github/workflows/release.yml '.protected_branch==true and .rollback_dr
 contains .github/workflows/release.yml '.secure_boot==true'
 contains .github/workflows/release.yml 'Reject stale verification evidence'
 
-# Non-dev publishing must be coupled to a fresh successful cross-component audit.
+# Non-dev publishing must be coupled to fresh cross-component and vulnerability evidence.
 contains scripts/check-release-gate-freshness.sh "require_fresh stability-security 'stability-security-crosscheck.yml'"
+contains scripts/check-release-gate-freshness.sh "require_fresh go-vulnerability 'govulncheck.yml'"
 contains scripts/check-release-gate-freshness.sh "'^(cmd/|internal/|configs/|container/|systemd/|scripts/|release/|\\.github/workflows/|go\\.(mod|sum)$)'"
 
 # Critical release/security-chain Actions must be immutable rather than movable major tags.
@@ -116,6 +131,10 @@ contains .github/workflows/codeql.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2f
 contains .github/workflows/codeql.yml 'github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd'
 contains .github/workflows/codeql.yml 'github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd'
 contains .github/workflows/codeql.yml 'build-mode: manual'
+contains .github/workflows/govulncheck.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
+contains .github/workflows/govulncheck.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+contains .github/workflows/govulncheck.yml 'golang.org/x/vuln/cmd/govulncheck@v1.6.0'
+contains .github/workflows/govulncheck.yml 'GOTOOLCHAIN: local'
 not_contains .github/workflows/release.yml 'actions/checkout@v6'
 not_contains .github/workflows/release.yml 'actions/setup-go@v7'
 not_contains .github/workflows/stability-security-crosscheck.yml 'actions/checkout@v6'
@@ -124,6 +143,8 @@ not_contains .github/workflows/codeql.yml 'actions/checkout@v6'
 not_contains .github/workflows/codeql.yml 'actions/setup-go@v7'
 not_contains .github/workflows/codeql.yml 'github/codeql-action/init@v4'
 not_contains .github/workflows/codeql.yml 'github/codeql-action/analyze@v4'
+not_contains .github/workflows/govulncheck.yml 'actions/checkout@v6'
+not_contains .github/workflows/govulncheck.yml 'actions/setup-go@v7'
 
 # Installable profiles must remain explicit and production Secure Boot must stay false
 # until the production signing chain is implemented and proven.
@@ -134,12 +155,10 @@ contains scripts/build-live-iso.sh 'confirmation": "ERASE:<target>"'
 contains scripts/build-live-iso.sh 'MENU="Try / Install KINGAI OS Server"'
 contains scripts/build-live-iso.sh 'MENU="Try / Install KINGAI OS Sentinel"'
 
-# Fail on accidental obvious TCP management binding in system service definitions.
 if grep -REn '(^|[[:space:]])(0\.0\.0\.0|\[::\]|127\.0\.0\.1):[0-9]+|ListenStream=[0-9]+' systemd; then
   fail 'systemd management surface contains a TCP listener'
 fi
 
-# Basic syntax/data sanity across release-critical files.
 python3 -m json.tool release/gates.json >/dev/null
 for f in configs/*.json; do python3 -m json.tool "$f" >/dev/null; done
 bash -n scripts/*.sh
