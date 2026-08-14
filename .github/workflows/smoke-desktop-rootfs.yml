@@ -6,6 +6,8 @@ on:
     paths:
       - 'desktop/**'
       - 'internal/desktop/**'
+      - 'internal/desktopbridge/**'
+      - 'internal/memory/**'
       - 'internal/statuspub/**'
       - 'cmd/kingaid/**'
       - 'cmd/kingai-desktop-bridge/**'
@@ -22,6 +24,8 @@ on:
     paths:
       - 'desktop/**'
       - 'internal/desktop/**'
+      - 'internal/desktopbridge/**'
+      - 'internal/memory/**'
       - 'internal/statuspub/**'
       - 'cmd/kingaid/**'
       - 'cmd/kingai-desktop-bridge/**'
@@ -72,14 +76,14 @@ jobs:
           sudo grep -q '^ExecStart=/usr/lib/kingai/kingai-desktop-bridge$' "$root/usr/lib/systemd/user/kingai-desktop-bridge.service"
           sudo grep -q '^UMask=0077$' "$root/usr/lib/systemd/user/kingai-desktop-bridge.service"
           sudo grep -q '^RestrictAddressFamilies=AF_UNIX$' "$root/usr/lib/systemd/user/kingai-desktop-bridge.service"
-          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
-          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-flow.js"
-          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-classic.js"
-          sudo grep -q 'kingaiManaged' "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
-          sudo grep -q 'kingaiManaged' "$root/usr/share/kingai/desktop/layouts/kingai-flow.js"
-          sudo grep -q 'kingaiManaged' "$root/usr/share/kingai/desktop/layouts/kingai-classic.js"
+          for layout in kingai-intelligence kingai-flow kingai-classic; do
+            sudo test -f "$root/usr/share/kingai/desktop/layouts/$layout.js"
+            sudo grep -q 'kingaiManaged' "$root/usr/share/kingai/desktop/layouts/$layout.js"
+          done
           sudo test -f "$root/usr/share/kingai/desktop/intelligence/Main.qml"
+          sudo test -f "$root/usr/share/kingai/desktop/intelligence/MetricCard.qml"
           sudo test -f "$root/usr/share/kingai/desktop/intelligence/TaskCenter.qml"
+          sudo test -f "$root/usr/share/kingai/desktop/intelligence/MemoryCenter.qml"
           sudo test -f "$root/usr/share/kingai/desktop/intelligence/launch.sh"
           sudo test -f "$root/usr/share/kingai/desktop/experiences/intelligence.json"
           sudo test -f "$root/usr/share/applications/kingai-intelligence.desktop"
@@ -90,8 +94,11 @@ jobs:
           sudo grep -q 'Application.arguments' "$root/usr/share/kingai/desktop/intelligence/Main.qml"
           sudo grep -q 'public-status.json' "$root/usr/share/kingai/desktop/intelligence/Main.qml"
           sudo grep -q 'TaskCenter {' "$root/usr/share/kingai/desktop/intelligence/Main.qml"
+          sudo grep -q 'MemoryCenter {' "$root/usr/share/kingai/desktop/intelligence/Main.qml"
           sudo grep -q 'StandardPaths.RuntimeLocation' "$root/usr/share/kingai/desktop/intelligence/TaskCenter.qml"
+          sudo grep -q 'StandardPaths.RuntimeLocation' "$root/usr/share/kingai/desktop/intelligence/MemoryCenter.qml"
           sudo grep -q '/kingai/desktop-private.json' "$root/usr/share/kingai/desktop/intelligence/TaskCenter.qml"
+          sudo grep -q '/kingai/desktop-private.json' "$root/usr/share/kingai/desktop/intelligence/MemoryCenter.qml"
           sudo grep -q 'Main.qml -- --center' "$root/usr/share/kingai/desktop/intelligence/launch.sh"
           sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
@@ -120,17 +127,22 @@ jobs:
           shell=Path('dist/rootfs-desktop-amd64/usr/share/kingai/desktop/intelligence/Main.qml').read_text()
           for center in ('home','agents','tasks','approvals','memory','models','automations','health'):
               assert f'id: "{center}"' in shell, center
-          for token in ('Application.arguments','file:///run/kingai/public-status.json','running_tasks','waiting_approval_tasks','TaskCenter {'):
+          for token in ('Application.arguments','file:///run/kingai/public-status.json','running_tasks','waiting_approval_tasks','TaskCenter {','MemoryCenter {'):
               assert token in shell, token
-          private=Path('dist/rootfs-desktop-amd64/usr/share/kingai/desktop/intelligence/TaskCenter.qml').read_text()
-          for token in ('StandardPaths.RuntimeLocation','/kingai/desktop-private.json','snapshot.schema !== 1','ageMs > 15000'):
-              assert token in private, token
-          for forbidden in ('/var/lib/kingai/tasks','/v1/tasks/list','/v1/approval/list','/v1/memory/list'):
-              assert forbidden not in private, forbidden
+          task=Path('dist/rootfs-desktop-amd64/usr/share/kingai/desktop/intelligence/TaskCenter.qml').read_text()
+          memory=Path('dist/rootfs-desktop-amd64/usr/share/kingai/desktop/intelligence/MemoryCenter.qml').read_text()
+          for private in (task, memory):
+              for token in ('StandardPaths.RuntimeLocation','/kingai/desktop-private.json','snapshot.schema !== 1','ageMs > 15000'):
+                  assert token in private, token
+              for forbidden in ('/var/lib/kingai/tasks','/v1/tasks/list','/v1/approval/list','/v1/memory/list'):
+                  assert forbidden not in private, forbidden
+          for layer in ('M0','M1','M2','M3','M4','M5','M6'):
+              assert f'id: "{layer}"' in memory, layer
           # Explanatory privacy labels are allowed. Test against concrete sample
           # secrets/private payloads used by the statuspub regression suite.
           for forbidden in ('must never be published','private task text','approval-target-secret','sk-test-secret','api_key='):
               assert forbidden not in qml.lower(), forbidden
               assert forbidden not in shell.lower(), forbidden
-              assert forbidden not in private.lower(), forbidden
+              assert forbidden not in task.lower(), forbidden
+              assert forbidden not in memory.lower(), forbidden
           PY
