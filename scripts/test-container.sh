@@ -49,17 +49,22 @@ docker volume create "$state_volume" >/dev/null
 docker volume create "$log_volume" >/dev/null
 
 start_container() {
-  docker run -d \
-    --name "$name" \
-    --read-only \
-    --security-opt no-new-privileges=true \
-    --cap-drop ALL \
-    --pids-limit 256 \
-    --tmpfs /run/kingai:rw,nosuid,nodev,noexec,mode=0750,uid=10001,gid=10001 \
-    --tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777 \
-    --mount "type=volume,src=$state_volume,dst=/var/lib/kingai" \
-    --mount "type=volume,src=$log_volume,dst=/var/log/kingai" \
-    "$image" >/dev/null
+  local run_args=(
+    -d
+    --name "$name"
+    --read-only
+    --security-opt no-new-privileges=true
+    --cap-drop ALL
+    --pids-limit 256
+    --tmpfs /run/kingai:rw,nosuid,nodev,noexec,mode=0750,uid=10001,gid=10001
+    --tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777
+    --mount "type=volume,src=$state_volume,dst=/var/lib/kingai"
+    --mount "type=volume,src=$log_volume,dst=/var/log/kingai"
+  )
+  if [[ -n "$platform" ]]; then
+    run_args+=(--platform "$platform")
+  fi
+  docker run "${run_args[@]}" "$image" >/dev/null
 }
 
 wait_healthy() {
@@ -83,9 +88,17 @@ wait_healthy() {
 start_container
 wait_healthy
 
-[[ "$(docker exec "$name" id -u)" == "10001" ]]
-[[ "$(docker exec "$name" id -g)" == "10001" ]]
-docker exec "$name" sh -eu -c 'test "$(basename "$(readlink /proc/1/exe)")" = kingaid'
+[[ "$(docker exec "$name" id -u)" == "10001" ]] || { echo "container UID is not 10001" >&2; exit 1; }
+[[ "$(docker exec "$name" id -g)" == "10001" ]] || { echo "container GID is not 10001" >&2; exit 1; }
+# Under cross-architecture binfmt/QEMU emulation /proc/1/exe may resolve to the
+# host-side QEMU interpreter. Verify the configured entrypoint above and the
+# PID 1 command line here so the smoke test checks the container contract
+# rather than a host emulation implementation detail.
+pid1_cmdline=$(docker exec "$name" sh -eu -c 'tr "\000" "\n" < /proc/1/cmdline')
+grep -Fxq '/usr/lib/kingai/kingaid' <<<"$pid1_cmdline" || {
+  echo "PID 1 command line does not contain /usr/lib/kingai/kingaid: $pid1_cmdline" >&2
+  exit 1
+}
 docker exec "$name" sh -eu -c 'test "$(wc -l < /proc/net/tcp)" -eq 1; test "$(wc -l < /proc/net/tcp6)" -eq 1'
 
 if [[ -n "$platform" ]]; then
