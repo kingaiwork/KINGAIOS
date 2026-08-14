@@ -17,6 +17,7 @@ build:
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-update ./cmd/kingai-update
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-installer ./cmd/kingai-installer
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-recovery ./cmd/kingai-recovery
+	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-desktop-bridge ./cmd/kingai-desktop-bridge
 
 vet:
 	go vet ./...
@@ -27,6 +28,7 @@ test:
 desktop-validate:
 	bash scripts/validate-desktop.sh
 	bash scripts/test-desktop-intelligence-launcher.sh
+	go test ./internal/desktop ./internal/statuspub ./cmd/kingai-desktop-bridge
 
 check: vet test desktop-validate
 	bash -n scripts/*.sh
