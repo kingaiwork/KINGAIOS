@@ -9,6 +9,7 @@ on:
       - "internal/desktop/**"
       - "cmd/kingai/**"
       - "scripts/validate-desktop.sh"
+      - "scripts/test-desktop-intelligence-launcher.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
       - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
@@ -20,6 +21,7 @@ on:
       - "internal/desktop/**"
       - "cmd/kingai/**"
       - "scripts/validate-desktop.sh"
+      - "scripts/test-desktop-intelligence-launcher.sh"
       - "distro/overlay/usr/share/applications/kingai-intelligence.desktop"
       - "distro/overlay/etc/xdg/mimeapps.list"
       - "Makefile"
@@ -38,8 +40,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate single Desktop edition contract
-        run: bash scripts/validate-desktop.sh
+      - name: Validate Desktop product and launcher contracts
+        run: make desktop-validate
       - name: Validate first-run shell transaction
         run: |
           bash -n desktop/welcome/launch.sh
@@ -60,7 +62,6 @@ jobs:
         run: |
           test -f desktop/intelligence/Main.qml
           test -f desktop/intelligence/launch.sh
-          bash -n desktop/intelligence/launch.sh
           grep -q 'kingai://approvals' desktop/plasmoids/org.kingai.agentcenter/contents/ui/main.qml
           grep -q '^MimeType=x-scheme-handler/kingai;' distro/overlay/usr/share/applications/kingai-intelligence.desktop
           grep -q '^x-scheme-handler/kingai=kingai-intelligence.desktop$' distro/overlay/etc/xdg/mimeapps.list
