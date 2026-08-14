@@ -1,7 +1,7 @@
 [Unit]
 Description=KINGAI OS Constrained Execution Broker
 Documentation=https://os.kingai.work/docs
-After=local-fs.target dbus.service
+After=local-fs.target systemd-sysusers.service dbus.service
 Before=kingaid.service
 
 [Service]
