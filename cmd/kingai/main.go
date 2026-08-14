@@ -41,10 +41,12 @@ Usage:
   kingai execution run <agent> <capability> <target> [approval-id]
   kingai memory put <kind> <json>
   kingai memory list
+  kingai memory search <text...>
   kingai memory delete <id>
   kingai model select <capability> [--private] [--offline]
   kingai task create <agent> <goal...>
   kingai task list
+  kingai task run <id>
   kingai task transition <id> <status>
   kingai task step <id> <step-id> <status>
   kingai desktop list
@@ -166,6 +168,11 @@ func memoryCmd(args []string) {
 		var out []memory.Record
 		if err := daemonJSON(http.MethodGet, "/v1/memory/list", nil, &out); err != nil { fail(err) }
 		printJSON(out)
+	case "search":
+		if len(args) < 2 { usage(); os.Exit(2) }
+		var out []memory.Record
+		if err := daemonJSON(http.MethodPost, "/v1/memory/search", memory.Query{Text: strings.Join(args[1:], " "), Limit: 100}, &out); err != nil { fail(err) }
+		printJSON(out)
 	case "delete":
 		if len(args) != 2 { usage(); os.Exit(2) }
 		var out map[string]any
@@ -196,6 +203,11 @@ func taskCmd(args []string) {
 	case "list":
 		var out []taskgraph.Task
 		if err := daemonJSON(http.MethodGet, "/v1/tasks/list", nil, &out); err != nil { fail(err) }
+		printJSON(out)
+	case "run":
+		if len(args) != 2 { usage(); os.Exit(2) }
+		var out taskgraph.Task
+		if err := daemonJSONWithTimeout(http.MethodPost, "/v1/tasks/run", map[string]any{"id": args[1]}, &out, 40*time.Second); err != nil { fail(err) }
 		printJSON(out)
 	case "transition":
 		if len(args) != 3 { usage(); os.Exit(2) }
