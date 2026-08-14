@@ -39,6 +39,11 @@ SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX
 CapabilityBoundingSet=
 AmbientCapabilities=
+MemoryHigh=96M
+MemoryMax=128M
+TasksMax=32
+LimitNOFILE=256
+TimeoutStopSec=8s
 
 [Install]
 WantedBy=multi-user.target
