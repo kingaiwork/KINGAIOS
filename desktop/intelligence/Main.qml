@@ -51,7 +51,7 @@ ApplicationWindow {
     }
 
     function parseArguments() {
-        var args = Qt.application.arguments || []
+        var args = Application.arguments || []
         for (var i = 0; i < args.length; ++i) {
             if (args[i] === "--center" && i + 1 < args.length) {
                 selectedCenter = normalizeCenter(args[i + 1])
