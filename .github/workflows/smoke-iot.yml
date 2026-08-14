@@ -6,6 +6,7 @@ on:
     paths:
       - 'cmd/**'
       - 'internal/**'
+      - 'sdk/**'
       - 'configs/**'
       - 'systemd/kingaid.service'
       - 'systemd/kingaid-iot.conf'
@@ -17,6 +18,7 @@ on:
       - 'scripts/build-iot-image.sh'
       - 'iot/**'
       - 'profiles/iot.yaml'
+      - 'tools/ci/validate-device-pack-template/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/smoke-iot.yml'
@@ -24,6 +26,7 @@ on:
     paths:
       - 'cmd/**'
       - 'internal/**'
+      - 'sdk/**'
       - 'configs/**'
       - 'systemd/kingaid.service'
       - 'systemd/kingaid-iot.conf'
@@ -35,6 +38,7 @@ on:
       - 'scripts/build-iot-image.sh'
       - 'iot/**'
       - 'profiles/iot.yaml'
+      - 'tools/ci/validate-device-pack-template/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/smoke-iot.yml'
@@ -58,7 +62,32 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Test governed device runtime
-        run: go test ./internal/devicepack ./internal/policy ./internal/agent ./cmd/kingaid
+        run: go test ./internal/devicepack ./internal/deviceidentity ./internal/update ./internal/policy ./internal/agent ./sdk/edgehandler ./cmd/kingaid
+      - name: Validate Edge integration templates and release claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./tools/ci/validate-device-pack-template iot/templates/*.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          matrix=json.loads(Path('iot/support-matrix.json').read_text())
+          catalog=json.loads(Path('iot/capability-catalog.json').read_text())
+          assert matrix['schema']==1 and matrix['product']=='KINGAI OS IoT / Edge'
+          assert set(matrix['architectures'])=={'amd64','arm64'}
+          assert catalog['schema']==1 and 'device.npu.compute' in {x['id'] for x in catalog['canonical_capabilities']}
+          assert json.loads(Path('distro/overlay/usr/share/kingai/iot/support-matrix.json').read_text())==matrix
+          assert json.loads(Path('distro/overlay/usr/share/kingai/iot/capability-catalog.json').read_text())==catalog
+          for platform in matrix['platforms']:
+              assert platform['hardware_verified'] is False, platform
+              assert platform['bootable_release'] is False, platform
+              path=Path('iot')/platform['device_pack_template']
+              assert path.is_file(), path
+          for path in Path('iot/templates').glob('*.json'):
+              data=json.loads(path.read_text())
+              assert data['security']['signed_manifest'] is False, path
+              assert data['security']['redistribution_reviewed'] is False, path
+          PY
       - name: Install cross-architecture and filesystem tooling
         run: |
           sudo apt-get update
@@ -81,20 +110,37 @@ jobs:
           sudo test -L "$root/etc/systemd/system/multi-user.target.wants/kingai-update-health.service"
           sudo test -f "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           sudo test -d "$root/etc/kingai/device-packs"
+          sudo test -d "$root/etc/kingai/trust/device-pack-keys"
+          sudo test -d "$root/usr/lib/kingai/device-packs"
           sudo test -f "$root/usr/share/kingai/iot/device-pack.schema.json"
+          sudo test -f "$root/usr/share/kingai/iot/device-pack-signature.schema.json"
+          sudo test -f "$root/usr/share/kingai/iot/device-identity.schema.json"
+          sudo test -f "$root/usr/share/kingai/iot/capability-catalog.json"
+          sudo test -f "$root/usr/share/kingai/iot/support-matrix.json"
           sudo test -f "$root/usr/share/doc/kingai-os/IOT-HANDLER-PROTOCOL.md"
           sudo test -f "$root/usr/lib/tmpfiles.d/kingai-iot.conf"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=true$' "$root/usr/lib/systemd/system/kingaid.service"
           grep -q '^Environment=KINGAI_REQUIRE_EXECD=false$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_TASK_RUN_BUDGET=16$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_RUNTIME_ENABLED=true$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_IDENTITY=/etc/kingai/device.json$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_PACK_DIR=/etc/kingai/device-packs$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_ARTIFACT_ROOT=/usr/lib/kingai/device-packs$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^Environment=KINGAI_DEVICE_TRUST_DIR=/etc/kingai/trust/device-pack-keys$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_HANDLER_ROOT=/run/kingai-device$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_DEVICE_BROKER_SOCKET=/run/kingai/device-broker.sock$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
           grep -q '^Environment=KINGAI_EXECD_SOCKET=/run/kingai/device-broker.sock$' "$root/usr/lib/systemd/system/kingaid.service.d/10-iot.conf"
+          grep -q '^User=_kingai$' "$root/usr/lib/systemd/system/kingaid.service"
+          grep -q '^PrivateDevices=yes$' "$root/usr/lib/systemd/system/kingaid.service"
+          grep -q '^RestrictAddressFamilies=AF_UNIX$' "$root/usr/lib/systemd/system/kingaid.service"
+          grep -q '^CapabilityBoundingSet=$' "$root/usr/lib/systemd/system/kingaid.service"
           grep -q '^NAME="KINGAI OS"' "$root/usr/lib/os-release"
           test "$(sudo stat -c '%u:%g' "$root/etc/kingai/device-packs")" = '0:0'
           test "$(sudo stat -c '%a' "$root/etc/kingai/device-packs")" = '755'
+          test "$(sudo stat -c '%u:%g' "$root/etc/kingai/trust/device-pack-keys")" = '0:0'
+          test "$(( 8#$(sudo stat -c '%a' "$root/etc/kingai/trust/device-pack-keys") & 8#022 ))" -eq 0
+          test "$(sudo stat -c '%u:%g' "$root/usr/lib/kingai/device-packs")" = '0:0'
+          test "$(( 8#$(sudo stat -c '%a' "$root/usr/lib/kingai/device-packs") & 8#022 ))" -eq 0
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
       - name: Build generic Edge filesystem image
         run: sudo bash scripts/build-iot-image.sh "${{ matrix.arch }}" dist
