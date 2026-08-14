@@ -3,8 +3,8 @@ set -euo pipefail
 
 channel="${1:-}"
 profile="${2:-server}"
-case "$channel" in dev|beta|rc|stable) ;; *) echo "usage: $0 <dev|beta|rc|stable> <server|desktop>" >&2; exit 2;; esac
-case "$profile" in server|desktop) ;; *) echo "invalid profile: $profile" >&2; exit 2;; esac
+case "$channel" in dev|beta|rc|stable) ;; *) echo "usage: $0 <dev|beta|rc|stable> <server|desktop|iot>" >&2; exit 2;; esac
+case "$profile" in server|desktop|iot) ;; *) echo "invalid profile: $profile" >&2; exit 2;; esac
 
 [[ "$channel" == dev ]] && { echo 'Developer channel: freshness gates are advisory only.'; exit 0; }
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
@@ -35,6 +35,15 @@ require_fresh() {
   fi
   echo "${gate}: fresh (${workflow} @ ${sha})"
 }
+
+if [[ "$profile" == iot ]]; then
+  require_fresh iot-edge 'smoke-iot.yml' \
+    '^(cmd/kingaid/|cmd/kingai-update/|internal/(agent|deviceidentity|devicepack|executor|policy|scheduler|taskgraph|update)/|sdk/edgehandler/|iot/|profiles/iot\.yaml$|systemd/kingaid(-iot)?\.conf$|systemd/kingaid\.service$|tmpfiles/|distro/packages/iot\.txt$|distro/overlay/|scripts/build-(rootfs|iot-image)\.sh$|tools/(ci/validate-device-pack-template|device-pack-release)/|go\.(mod|sum)$)'
+  require_fresh iot-foundation 'ci.yml' \
+    '^(cmd/kingaid/|cmd/kingai-update/|internal/(deviceidentity|devicepack|policy|update)/|sdk/edgehandler/|iot/|profiles/iot\.yaml$|release/gates\.json$|go\.(mod|sum)$)'
+  echo "Release evidence freshness passed for iot/${channel}. Hardware support claims remain separately gated by iot/support-matrix.json and HIL evidence."
+  exit 0
+fi
 
 if [[ "$profile" == desktop ]]; then
   require_fresh installer 'smoke-installer-desktop-vm.yml' \
