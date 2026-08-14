@@ -9,6 +9,8 @@ not_contains() { ! grep -Fq -- "$2" "$1" || fail "$1 contains forbidden invarian
 for f in \
   release/gates.json \
   .github/workflows/release.yml \
+  .github/workflows/stability-security-crosscheck.yml \
+  scripts/check-release-gate-freshness.sh \
   scripts/build-live-iso.sh \
   systemd/kingaid.service \
   systemd/kingai-execd.service \
@@ -89,6 +91,20 @@ contains .github/workflows/release.yml '.secure_boot_vm==true and .tuf_repositor
 contains .github/workflows/release.yml '.protected_branch==true and .rollback_drill==true and .recovery_drill==true and .r2_delivery==true'
 contains .github/workflows/release.yml '.secure_boot==true'
 contains .github/workflows/release.yml 'Reject stale verification evidence'
+
+# Non-dev publishing must be coupled to a fresh successful cross-component audit.
+contains scripts/check-release-gate-freshness.sh "require_fresh stability-security 'stability-security-crosscheck.yml'"
+contains scripts/check-release-gate-freshness.sh "'^(cmd/|internal/|configs/|container/|systemd/|scripts/|release/|\\.github/workflows/|go\\.(mod|sum)$)'"
+
+# Critical release-chain Actions must be immutable rather than movable major tags.
+contains .github/workflows/release.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
+contains .github/workflows/release.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+contains .github/workflows/stability-security-crosscheck.yml 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803'
+contains .github/workflows/stability-security-crosscheck.yml 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+not_contains .github/workflows/release.yml 'actions/checkout@v6'
+not_contains .github/workflows/release.yml 'actions/setup-go@v7'
+not_contains .github/workflows/stability-security-crosscheck.yml 'actions/checkout@v6'
+not_contains .github/workflows/stability-security-crosscheck.yml 'actions/setup-go@v7'
 
 # Installable profiles must remain explicit and production Secure Boot must stay false
 # until the production signing chain is implemented and proven.
