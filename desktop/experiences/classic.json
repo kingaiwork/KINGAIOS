@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "kingai-classic",
+  "name": "KINGAI Classic",
+  "description": "Familiar personal-computer workflow with an application menu, taskbar and system tray.",
+  "theme": "org.kingai.classic",
+  "layout": "kingai-classic.js",
+  "mode": "taskbar-menu",
+  "default": false,
+  "primary_surfaces": [
+    "application-menu",
+    "taskbar",
+    "agents",
+    "tasks",
+    "system-tray"
+  ]
+}
