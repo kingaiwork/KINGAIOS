@@ -32,10 +32,7 @@ type Result struct {
 	Message string          `json:"message,omitempty"`
 }
 
-type Handler interface {
-	Execute(context.Context, Request) (Result, error)
-}
-
+type Handler interface { Execute(context.Context, Request) (Result, error) }
 type HandlerFunc func(context.Context, Request) (Result, error)
 func (f HandlerFunc) Execute(ctx context.Context, req Request) (Result, error) { return f(ctx, req) }
 
@@ -60,9 +57,7 @@ func Serve(ctx context.Context, cfg Config, handler Handler) error {
 	if err != nil { return err }
 	defer func(){ _ = listener.Close(); _ = os.Remove(cfg.SocketPath) }()
 	if err := os.Chmod(cfg.SocketPath, 0o600); err != nil { return err }
-	if cfg.SocketOwner >= 0 {
-		if err := os.Chown(cfg.SocketPath, cfg.SocketOwner, -1); err != nil { return fmt.Errorf("chown handler socket: %w", err) }
-	}
+	if err := os.Chown(cfg.SocketPath, cfg.SocketOwner, -1); err != nil { return fmt.Errorf("chown handler socket: %w", err) }
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -99,9 +94,7 @@ func Serve(ctx context.Context, cfg Config, handler Handler) error {
 
 func authorize(capabilities map[string][]string, req Request) error {
 	if strings.TrimSpace(req.Agent)=="" || len(req.Agent)>128 { return errors.New("invalid agent") }
-	if strings.TrimSpace(req.Capability)=="" || len(req.Capability)>128 || !strings.HasPrefix(req.Capability,"device.") || strings.ContainsAny(req.Capability,"* /\\;$`?[]{}\x00\n\r") {
-		return errors.New("invalid device capability")
-	}
+	if strings.TrimSpace(req.Capability)=="" || len(req.Capability)>128 || !strings.HasPrefix(req.Capability,"device.") || strings.ContainsAny(req.Capability,"* /\\;$`?[]{}\x00\n\r") { return errors.New("invalid device capability") }
 	if len(req.Target)>4096 || strings.ContainsAny(req.Target,"\x00\n\r") { return errors.New("invalid target") }
 	if len(req.Arguments)>32<<10 || (len(req.Arguments)>0 && !json.Valid(req.Arguments)) { return errors.New("invalid arguments") }
 	resources,ok := capabilities[req.Capability]
@@ -111,9 +104,8 @@ func authorize(capabilities map[string][]string, req Request) error {
 }
 
 func validateConfig(cfg Config) error {
-	if !filepath.IsAbs(cfg.SocketPath) || filepath.Clean(cfg.SocketPath)!=cfg.SocketPath || filepath.Dir(cfg.SocketPath)!=DefaultSocketRoot || !strings.HasSuffix(cfg.SocketPath,".sock") || strings.ContainsAny(cfg.SocketPath,"\x00\n\r") {
-		return errors.New("handler socket must be a clean .sock path directly under /run/kingai-device")
-	}
+	if !filepath.IsAbs(cfg.SocketPath) || filepath.Clean(cfg.SocketPath)!=cfg.SocketPath || filepath.Dir(cfg.SocketPath)!=DefaultSocketRoot || !strings.HasSuffix(cfg.SocketPath,".sock") || strings.ContainsAny(cfg.SocketPath,"\x00\n\r") { return errors.New("handler socket must be a clean .sock path directly under /run/kingai-device") }
+	if cfg.SocketOwner <= 0 { return errors.New("handler socket owner must be an explicit non-root kingaid uid") }
 	if len(cfg.Capabilities)==0 || len(cfg.Capabilities)>64 { return errors.New("handler must declare 1-64 capabilities") }
 	for capability,resources := range cfg.Capabilities {
 		if !strings.HasPrefix(capability,"device.") || strings.ContainsAny(capability,"* /\\;$`?[]{}\x00\n\r") || len(resources)==0 || len(resources)>32 { return errors.New("invalid handler capability declaration") }
