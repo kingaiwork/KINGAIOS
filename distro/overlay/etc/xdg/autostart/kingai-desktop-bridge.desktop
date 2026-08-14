@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KINGAI Desktop Bridge
+Comment=Start the private per-user KINGAI Desktop data bridge
+Exec=systemctl --user start kingai-desktop-bridge.service
+Terminal=false
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel
+X-KDE-StartupNotify=false
