@@ -56,9 +56,7 @@ func (s Scheduler) RunReady(ctx context.Context, taskID string, peerUID uint32) 
 		if len(ready) == 0 { return task, nil }
 		progressed := false
 		for _, step := range ready {
-			if step.Capability == "" {
-				continue
-			}
+			if step.Capability == "" { continue }
 			auth, err := s.Authorizer.Authorize(ctx, task, step, peerUID)
 			if err != nil { return task, err }
 			if !auth.Allowed {
@@ -73,6 +71,10 @@ func (s Scheduler) RunReady(ctx context.Context, taskID string, peerUID uint32) 
 				}
 				reason := auth.Reason
 				if reason == "" { reason = "execution denied by policy" }
+				if step.Status == taskgraph.StatusCreated {
+					task, err = s.Store.TransitionStepForPeer(task.ID, peerUID, step.ID, taskgraph.StatusWaiting, nil, reason)
+					if err != nil { return task, err }
+				}
 				task, err = s.Store.TransitionStepForPeer(task.ID, peerUID, step.ID, taskgraph.StatusBlocked, nil, reason)
 				if err != nil { return task, err }
 				return task, nil
