@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Fail-closed live-media installer; the dedicated VM gate verifies this exact entrypoint.
 
 PROFILE=server
 TARGET=""
