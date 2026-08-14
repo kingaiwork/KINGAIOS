@@ -1,0 +1,186 @@
+name: KINGAI OS Installable Live ISO Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'scripts/kingai-install-live.sh'
+      - 'scripts/build-rootfs.sh'
+      - 'scripts/build-live-iso.sh'
+      - 'distro/packages/server.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/packages/installer-amd64.txt'
+      - 'distro/overlay/**'
+      - 'systemd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/smoke-installable-live-iso.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kingai-installable-live-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server-live-iso-install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install ISO installer and VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso \
+            grub-pc-bin grub-efi-amd64-bin grub-common grub2-common mtools \
+            gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
+            qemu-utils qemu-system-x86 ovmf jq
+
+      - name: Build Server root filesystem
+        run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh server amd64 dist
+
+      - name: Inject installed-boot proof marker
+        shell: bash
+        run: |
+          root=dist/rootfs-server-amd64
+          sudo tee "$root/usr/lib/kingai/kingai-iso-installed-smoke" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          mountpoint -q /var/lib/kingai-state
+          test -e /dev/mapper/KINGAI_STATE
+          echo KINGAI_ISO_INSTALLED_BOOT_OK > /dev/ttyS0
+          EOF
+          sudo chmod 0755 "$root/usr/lib/kingai/kingai-iso-installed-smoke"
+          sudo tee "$root/usr/lib/systemd/system/kingai-iso-installed-smoke.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=KINGAI installable ISO boot proof
+          After=local-fs.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/lib/kingai/kingai-iso-installed-smoke
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-iso-installed-smoke.service "$root/etc/systemd/system/multi-user.target.wants/kingai-iso-installed-smoke.service"
+
+      - name: Build exact live ISO payload
+        run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh server dist
+
+      - name: Mount ISO and its embedded squashfs
+        id: media
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chown -R "$USER:$USER" dist
+          iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit)
+          test -s "$iso"
+          sha256sum -c "$iso.sha256"
+          mkdir -p ci/media ci/source
+          sudo mount -o loop,ro "$iso" ci/media
+          test -s ci/media/casper/filesystem.squashfs
+          sudo mount -t squashfs -o loop,ro ci/media/casper/filesystem.squashfs ci/source
+          test -x ci/source/usr/sbin/kingai-install
+          test -x ci/source/usr/lib/kingai/kingai-installer
+          grep -q '^NAME="KINGAI OS"' ci/source/usr/lib/os-release
+          echo "iso=$iso" >> "$GITHUB_OUTPUT"
+
+      - name: Create disposable installation target
+        shell: bash
+        run: |
+          truncate -s 26G ci/live-installer-test.raw
+          sudo modprobe nbd max_part=16
+          sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/live-installer-test.raw
+          sudo udevadm settle
+          test "$(lsblk -dn -o TYPE /dev/nbd0)" = disk
+          head -c 64 /dev/urandom > ci/state.key
+          chmod 600 ci/state.key
+
+      - name: Install through the live ISO entrypoint
+        shell: bash
+        run: |
+          sudo env \
+            KINGAI_INSTALLER_LIVE_CI=1 \
+            KINGAI_INSTALLER_CI=1 \
+            KINGAI_INSTALLER_TEST_PERSIST_KEY=1 \
+            KINGAI_INSTALLER_BIN="$PWD/ci/source/usr/lib/kingai/kingai-installer" \
+            "$PWD/ci/source/usr/sbin/kingai-install" \
+              --target /dev/nbd0 \
+              --profile server \
+              --source-image "$PWD/ci/media/casper/filesystem.squashfs" \
+              --state-key "$PWD/ci/state.key" \
+              --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
+          jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "server"' ci/install-result.json >/dev/null
+
+      - name: Validate installed A-B disk
+        shell: bash
+        run: |
+          sudo udevadm settle
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p1)" = KINGAI_EFI
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
+          test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
+          sudo cryptsetup isLuks /dev/nbd0p4
+          mkdir -p ci/check-root ci/check-efi
+          sudo mount /dev/nbd0p2 ci/check-root
+          sudo mount /dev/nbd0p1 ci/check-efi
+          grep -q '^NAME="KINGAI OS"' ci/check-root/usr/lib/os-release
+          grep -q 'KINGAI_STATE' ci/check-root/etc/crypttab
+          test -f ci/check-root/boot/grub/grub.cfg
+          grep -q 'menuentry.*Slot A' ci/check-root/boot/grub/grub.cfg
+          grep -q 'menuentry.*Slot B' ci/check-root/boot/grub/grub.cfg
+          test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
+          test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
+          sudo umount ci/check-efi
+          sudo umount ci/check-root
+
+      - name: Unmount live media and disconnect target
+        run: |
+          sudo umount ci/source
+          sudo umount ci/media
+          sudo qemu-nbd --disconnect /dev/nbd0
+          sudo udevadm settle
+
+      - name: UEFI boot the system installed from ISO
+        shell: bash
+        run: |
+          codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
+          varsfd=/usr/share/OVMF/OVMF_VARS_4M.fd
+          test -f "$codefd" && test -f "$varsfd"
+          cp "$varsfd" ci/OVMF_VARS.fd
+          set +e
+          timeout 240 qemu-system-x86_64 \
+            -machine q35 -m 2048 -smp 2 \
+            -drive if=pflash,format=raw,readonly=on,file="$codefd" \
+            -drive if=pflash,format=raw,file=ci/OVMF_VARS.fd \
+            -drive file=ci/live-installer-test.raw,format=raw,if=virtio \
+            -display none -serial stdio -no-reboot -snapshot \
+            > ci/qemu-installed-from-iso.log 2>&1
+          code=$?
+          set -e
+          cat ci/qemu-installed-from-iso.log
+          if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
+          grep -Fq 'KINGAI_ISO_INSTALLED_BOOT_OK' ci/qemu-installed-from-iso.log
+          grep -Fq 'KINGAI OS 0.1 Developer Foundation' ci/qemu-installed-from-iso.log
+          if grep -Fq 'grub>' ci/qemu-installed-from-iso.log; then
+            echo 'System installed from ISO dropped to a GRUB prompt.' >&2
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          mount | awk '$3 ~ /ci\/(source|media|check-root|check-efi)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
+          sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
