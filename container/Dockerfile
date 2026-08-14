@@ -69,5 +69,5 @@ ENV HOME=/var/lib/kingai \
 VOLUME ["/var/lib/kingai", "/var/log/kingai"]
 STOPSIGNAL SIGTERM
 USER ${KINGAI_UID}:${KINGAI_GID}
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/usr/bin/kingai", "status", "--json"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/usr/bin/kingai", "model", "status"]
 ENTRYPOINT ["/usr/lib/kingai/kingaid"]
