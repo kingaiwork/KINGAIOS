@@ -25,6 +25,7 @@ import (
 	"github.com/kingaiwork/KINGAIOS/internal/model"
 	"github.com/kingaiwork/KINGAIOS/internal/policy"
 	"github.com/kingaiwork/KINGAIOS/internal/runtimeadapter"
+	"github.com/kingaiwork/KINGAIOS/internal/runtimehealth"
 	"github.com/kingaiwork/KINGAIOS/internal/scheduler"
 	"github.com/kingaiwork/KINGAIOS/internal/statuspub"
 	"github.com/kingaiwork/KINGAIOS/internal/taskgraph"
@@ -113,6 +114,8 @@ func main() {
 	memoryRoot := getenv("KINGAI_MEMORY_ROOT", "/var/lib/kingai/memory")
 	taskRoot := getenv("KINGAI_TASK_ROOT", "/var/lib/kingai/tasks")
 	execdSocket := getenv("KINGAI_EXECD_SOCKET", "/run/kingai-execd/execd.sock")
+	requireExecd := getenvBool("KINGAI_REQUIRE_EXECD", false)
+	taskRunBudget := getenvInt("KINGAI_TASK_RUN_BUDGET", scheduler.DefaultMaxStepsPerRun, 1, 1024)
 
 	p := policy.Default()
 	if loaded, err := policy.Load(policyPath); err == nil { p = loaded } else if !errors.Is(err, os.ErrNotExist) { log.Printf("policy load failed, using safe defaults: %v", err) }
@@ -149,6 +152,53 @@ func main() {
 			return scheduler.Authorization{Reason: res.Reason}, nil
 		}),
 		Dispatcher: execClient,
+		MaxStepsPerRun: taskRunBudget,
+	}
+
+	readiness := func(ctx context.Context) runtimehealth.Snapshot {
+		stateOK, stateMessage := probeWritableDirs(approvalRoot, memoryRoot, taskRoot, filepath.Dir(auditPath))
+		execCtx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+		execErr := execClient.Health(execCtx)
+		cancel()
+		execOK := execErr == nil
+		execStatus := "ready"
+		execMessage := ""
+		if execErr != nil {
+			if requireExecd {
+				execStatus = "offline"
+				execMessage = execErr.Error()
+			} else {
+				execOK = true
+				execStatus = "not_required"
+			}
+		}
+
+		modelStatuses := modelRegistry.Statuses()
+		modelConfigured := len(modelStatuses) > 0
+		modelHealthy := countHealthyProviders(modelStatuses)
+		modelOK := !modelConfigured || modelHealthy > 0
+		modelStatus := "not_configured"
+		if modelConfigured {
+			if modelHealthy > 0 { modelStatus = "ready" } else { modelStatus = "unavailable" }
+		}
+
+		adapterStatuses := adapterManager.Statuses()
+		adapterConfigured := len(adapterStatuses) > 0
+		adapterHealthy := countHealthyAdapters(adapterStatuses)
+		adapterOK := !adapterConfigured || adapterHealthy > 0
+		adapterStatus := "not_configured"
+		if adapterConfigured {
+			if adapterHealthy > 0 { adapterStatus = "ready" } else { adapterStatus = "unavailable" }
+		}
+
+		return runtimehealth.Build(
+			runtimehealth.Component{Name: "agent_registry", Required: true, OK: registry.Count() > 0, Status: ternary(registry.Count() > 0, "ready", "empty")},
+			runtimehealth.Component{Name: "audit_and_state", Required: true, OK: stateOK, Status: ternary(stateOK, "writable", "unwritable"), Message: stateMessage},
+			runtimehealth.Component{Name: "execution_broker", Required: requireExecd, OK: execOK, Status: execStatus, Message: execMessage},
+			runtimehealth.Component{Name: "model_providers", Required: false, OK: modelOK, Status: modelStatus},
+			runtimehealth.Component{Name: "policy", Required: true, OK: true, Status: "ready"},
+			runtimehealth.Component{Name: "runtime_adapters", Required: false, OK: adapterOK, Status: adapterStatus},
+		)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(socket), 0o755); err != nil { log.Fatal(err) }
@@ -175,13 +225,18 @@ func main() {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "kingaid", "version": version, "architecture": "D5-preview"})
 	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
+		snapshot := readiness(r.Context())
+		code := http.StatusOK
+		if !snapshot.Ready { code = http.StatusServiceUnavailable }
+		writeJSON(w, code, snapshot)
+	})
 	mux.HandleFunc("/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-		execState := "offline"
-		healthCtx, cancel := context.WithTimeout(r.Context(), 150*time.Millisecond)
-		if execClient.Health(healthCtx) == nil { execState = "ready" }
-		cancel()
-		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "memory_service": "enabled", "memory_layers": "M0-M6", "model_router": "enabled", "model_provider_registry": "enabled", "runtime_adapter_registry": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "model_providers": len(modelRegistry.IDs()), "healthy_model_providers": countHealthyProviders(modelRegistry.Statuses()), "runtime_adapters": len(adapterManager.IDs()), "audit": "enabled", "version": version})
+		snapshot := readiness(r.Context())
+		execState := componentStatus(snapshot, "execution_broker")
+		writeJSON(w, http.StatusOK, map[string]any{"name": "KINGAI OS", "architecture": "D5-preview", "local_first": true, "runtime_ready": snapshot.Ready, "runtime_health": snapshot.Status, "policy": "enabled", "approval_broker": "enabled", "task_graph": "enabled", "task_scheduler": "enabled", "task_run_budget": taskRunBudget, "memory_service": "enabled", "memory_layers": "M0-M6", "model_router": "enabled", "model_provider_registry": "enabled", "runtime_adapter_registry": "enabled", "execution_broker": execState, "agent_registry": "enabled", "registered_agents": registry.Count(), "model_strategy": models.Strategy, "model_mode": models.DefaultMode, "model_candidates": len(modelCfg.Providers), "model_providers": len(modelRegistry.IDs()), "healthy_model_providers": countHealthyProviders(modelRegistry.Statuses()), "runtime_adapters": len(adapterManager.IDs()), "audit": "enabled", "version": version})
 	})
 
 	mux.HandleFunc("/v1/policy/evaluate", func(w http.ResponseWriter, r *http.Request) {
@@ -322,7 +377,11 @@ func main() {
 		uid := peerUID(r.Context()); if uid == invalidUID() { http.Error(w, "peer identity unavailable", http.StatusForbidden); return }
 		var in idRequest; if !decodeJSON(w, r, 16<<10, &in) { return }
 		task, err := taskScheduler.RunReady(r.Context(), in.ID, uid)
-		if err != nil { appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: false, PeerUID: uid, Reason: err.Error()}); writeJSON(w, http.StatusBadGateway, task); return }
+		if err != nil {
+			appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: false, PeerUID: uid, Reason: err.Error()})
+			if errors.Is(err, scheduler.ErrRunBudgetExceeded) { writeJSON(w, http.StatusTooManyRequests, task); return }
+			writeJSON(w, http.StatusBadGateway, task); return
+		}
 		appendAudit(auditPath, audit.Event{Type: "task.run", Agent: task.Agent, Allowed: true, PeerUID: uid, Reason: string(task.Status)}); writeJSON(w, http.StatusOK, task)
 	})
 
@@ -353,6 +412,20 @@ func loadModelConfig(path string) modelConfig {
 	if configured.Strategy != "" { m.Strategy = configured.Strategy }; if configured.DefaultMode != "" { m.DefaultMode = configured.DefaultMode }; if configured.Providers != nil { m.Providers = configured.Providers }; return m
 }
 func countHealthyProviders(statuses []model.ProviderStatus) int { count := 0; for _, status := range statuses { if status.Health.OK { count++ } }; return count }
+func countHealthyAdapters(statuses []runtimeadapter.Status) int { count := 0; for _, status := range statuses { if status.State == runtimeadapter.LifecycleHealthy && status.Health.OK { count++ } }; return count }
+func componentStatus(snapshot runtimehealth.Snapshot, name string) string { for _, component := range snapshot.Components { if component.Name == name { return component.Status } }; return "unknown" }
+func probeWritableDirs(paths ...string) (bool, string) {
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" { return false, "empty state path" }
+		if err := os.MkdirAll(path, 0o700); err != nil { return false, err.Error() }
+		f, err := os.CreateTemp(path, ".kingai-ready-*")
+		if err != nil { return false, err.Error() }
+		name := f.Name()
+		if err := f.Close(); err != nil { _ = os.Remove(name); return false, err.Error() }
+		if err := os.Remove(name); err != nil { return false, err.Error() }
+	}
+	return true, ""
+}
 func decodeJSON(w http.ResponseWriter, r *http.Request, max int64, out any) bool { r.Body = http.MaxBytesReader(w, r.Body, max); dec := json.NewDecoder(r.Body); dec.DisallowUnknownFields(); if err := dec.Decode(out); err != nil { http.Error(w, "invalid request", http.StatusBadRequest); return false }; return true }
 func appendAudit(path string, event audit.Event) { if err := audit.Append(path, event); err != nil { log.Printf("audit append failed: %v", err) } }
 func ownerForUID(uid uint32) string { return fmt.Sprintf("uid-%d", uid) }
@@ -362,4 +435,7 @@ func usernameForUID(uid uint32) string { if uid == invalidUID() { return "" }; u
 func unixPeerUID(c net.Conn) uint32 { uc, ok := c.(*net.UnixConn); if !ok { return invalidUID() }; raw, err := uc.SyscallConn(); if err != nil { return invalidUID() }; uid := invalidUID(); _ = raw.Control(func(fd uintptr) { cred, err := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED); if err == nil { uid = cred.Uid } }); return uid }
 func peerUID(ctx context.Context) uint32 { if uid, ok := ctx.Value(peerKey{}).(uint32); ok { return uid }; return invalidUID() }
 func writeJSON(w http.ResponseWriter, code int, v any) { w.Header().Set("Content-Type", "application/json"); w.WriteHeader(code); _ = json.NewEncoder(w).Encode(v) }
+func ternary(ok bool, yes, no string) string { if ok { return yes }; return no }
+func getenvBool(k string, d bool) bool { v := strings.TrimSpace(os.Getenv(k)); if v == "" { return d }; parsed, err := strconv.ParseBool(v); if err != nil { return d }; return parsed }
+func getenvInt(k string, d, min, max int) int { v := strings.TrimSpace(os.Getenv(k)); if v == "" { return d }; parsed, err := strconv.Atoi(v); if err != nil { return d }; if parsed < min { return min }; if parsed > max { return max }; return parsed }
 func getenv(k, d string) string { if v := os.Getenv(k); v != "" { return v }; return d }
