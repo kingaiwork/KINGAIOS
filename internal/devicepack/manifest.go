@@ -135,7 +135,7 @@ func CapabilityIDs(m Manifest) []string {
 func validateCapability(c Capability) error {
 	if !capabilityPattern.MatchString(c.ID) || strings.Contains(c.ID, "..") || strings.Contains(c.ID, "*") { return errors.New("invalid capability id") }
 	if !handlerPattern.MatchString(c.Handler) || strings.Contains(c.Handler, "..") || strings.ContainsAny(c.Handler, "/\\ ;$`*?") { return errors.New("handler must be a logical registered id, not a command or path") }
-	switch c.Operation { case "read", "write", "control", "reset", "update": default: return errors.New("invalid operation") }
+	switch c.Operation { case "read", "write", "compute", "control", "reset", "update": default: return errors.New("invalid operation") }
 	rank := riskRank(c.Risk)
 	if rank < 0 { return errors.New("risk must be L0 through L6") }
 	if len(c.Resources) == 0 || len(c.Resources) > 32 || duplicateStrings(c.Resources) { return errors.New("invalid resource set") }
@@ -145,7 +145,7 @@ func validateCapability(c Capability) error {
 	floor := minimumCapabilityRisk(c)
 	if rank < floor { return fmt.Errorf("declared risk %s is below required L%d safety floor", c.Risk, floor) }
 	if len(c.Description) > 500 || containsUnsafeText(c.Description) { return errors.New("invalid capability description") }
-	if c.Operation != "read" && rank >= 3 && !c.ApprovalRequired { return errors.New("high-risk mutating capability requires approval") }
+	if c.Operation != "read" && c.Operation != "compute" && rank >= 3 && !c.ApprovalRequired { return errors.New("high-risk mutating capability requires approval") }
 	if rank >= 5 && !c.ApprovalRequired { return errors.New("critical device capability requires approval") }
 	return nil
 }
