@@ -13,6 +13,7 @@ build:
 	@mkdir -p $(DIST)
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai ./cmd/kingai
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingaid ./cmd/kingaid
+	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-execd ./cmd/kingai-execd
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-update ./cmd/kingai-update
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-installer ./cmd/kingai-installer
 	go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/kingai-recovery ./cmd/kingai-recovery
@@ -30,6 +31,7 @@ check: vet test
 	@test -f profiles/iot.yaml
 	@test -f profiles/container.yaml
 	@test -f container/Dockerfile
+	@test -f systemd/kingai-execd.service
 
 container:
 	KINGAI_CONTAINER_PLATFORMS=linux/amd64 bash scripts/build-container.sh
