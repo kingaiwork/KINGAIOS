@@ -1,15 +1,15 @@
 [Unit]
 Description=KINGAI OS Core Daemon
 Documentation=https://os.kingai.work/docs
-After=local-fs.target kingai-execd.service
+After=local-fs.target
 Before=multi-user.target
-Wants=kingai-execd.service kingai-health-scan.timer
+Wants=kingai-health-scan.timer
 
 [Service]
 Type=simple
 User=_kingai
 Group=kingai
-Environment=KINGAI_REQUIRE_EXECD=true
+Environment=KINGAI_REQUIRE_EXECD=false
 Environment=KINGAI_TASK_RUN_BUDGET=64
 ExecStart=/usr/lib/kingai/kingaid
 Restart=on-failure
