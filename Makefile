@@ -27,8 +27,9 @@ test:
 
 desktop-validate:
 	bash scripts/validate-desktop.sh
+	bash scripts/validate-desktop-private.sh
 	bash scripts/test-desktop-intelligence-launcher.sh
-	go test ./internal/desktop ./internal/statuspub ./cmd/kingai-desktop-bridge
+	go test ./internal/desktop ./internal/statuspub ./internal/desktopbridge ./internal/memory ./cmd/kingaid ./cmd/kingai-desktop-bridge
 
 check: vet test desktop-validate
 	bash -n scripts/*.sh
