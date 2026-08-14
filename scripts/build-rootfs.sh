@@ -109,6 +109,7 @@ if [[ "$PROFILE" == "server" || "$PROFILE" == "desktop" ]]; then
   install -Dm755 "$OUT/kingai-execd-$ARCH" "$ROOT/usr/lib/kingai/kingai-execd"
   install -Dm755 "$OUT/kingai-installer-$ARCH" "$ROOT/usr/lib/kingai/kingai-installer"
   install -Dm755 "$OUT/kingai-recovery-$ARCH" "$ROOT/usr/lib/kingai/kingai-recovery"
+  install -Dm755 scripts/kingai-install-live.sh "$ROOT/usr/sbin/kingai-install"
   ln -sfn /usr/lib/kingai/kingai-installer "$ROOT/usr/bin/kingai-installer"
   ln -sfn /usr/lib/kingai/kingai-recovery "$ROOT/usr/bin/kingai-recovery"
 fi
