@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 VERSION := $(shell tr -d '[:space:]' < VERSION)
 DIST := dist
 
-.PHONY: all build test vet check container clean version
+.PHONY: all build test vet check desktop-validate container clean version
 
 all: check build
 
@@ -24,10 +24,15 @@ vet:
 test:
 	go test ./...
 
-check: vet test
+desktop-validate:
+	bash scripts/validate-desktop.sh
+	bash scripts/test-desktop-intelligence-launcher.sh
+
+check: vet test desktop-validate
 	bash -n scripts/*.sh
 	@test -f profiles/server.yaml
 	@test -f profiles/desktop.yaml
+	@test ! -e profiles/pc.yaml
 	@test -f profiles/iot.yaml
 	@test -f profiles/container.yaml
 	@test -f container/Dockerfile

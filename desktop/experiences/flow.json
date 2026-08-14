@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "kingai-flow",
+  "name": "KINGAI Flow",
+  "description": "Modern spatial workflow with a centered dock and workspace-first interaction.",
+  "theme": "org.kingai.flow",
+  "layout": "kingai-flow.js",
+  "mode": "dock-spatial",
+  "default": false,
+  "primary_surfaces": [
+    "workspace",
+    "search",
+    "agents",
+    "tasks",
+    "dock"
+  ]
+}

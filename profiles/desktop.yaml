@@ -2,6 +2,10 @@ profile: desktop
 name: KINGAI OS Desktop
 edition_role: personal-computer
 version_source: VERSION
+aliases:
+  - pc
+  - personal-computer
+separate_pc_profile: false
 base:
   lineage: ubuntu-26.04-lts
   architecture:
@@ -14,6 +18,8 @@ features:
   local_ai_runtime: optional
   rootless_containers: true
   recovery: true
+desktop_experience_manifest_root: desktop/experiences
+default_desktop_experience: kingai-intelligence
 desktop_experiences:
   - kingai-intelligence
   - kingai-flow

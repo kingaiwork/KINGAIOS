@@ -14,20 +14,26 @@ import (
 // provider credentials, user identifiers, task goals, approval targets, or raw
 // audit events.
 type Snapshot struct {
-	Product          string    `json:"product"`
-	Version          string    `json:"version"`
-	Architecture     string    `json:"architecture"`
-	Health           string    `json:"health"`
-	Policy           string    `json:"policy"`
-	RegisteredAgents int       `json:"registered_agents"`
-	ActiveTasks      int       `json:"active_tasks"`
-	PendingApprovals int       `json:"pending_approvals"`
-	ModelProviders   int       `json:"model_providers"`
-	ModelStrategy    string    `json:"model_strategy"`
-	ModelMode        string    `json:"model_mode"`
-	MemoryMode       string    `json:"memory_mode"`
-	CloudRequired    bool      `json:"cloud_required"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	Product             string    `json:"product"`
+	Version             string    `json:"version"`
+	Architecture        string    `json:"architecture"`
+	Health              string    `json:"health"`
+	Policy              string    `json:"policy"`
+	RegisteredAgents    int       `json:"registered_agents"`
+	ActiveTasks         int       `json:"active_tasks"`
+	RunningTasks        int       `json:"running_tasks"`
+	WaitingTasks        int       `json:"waiting_tasks"`
+	WaitingApprovalTasks int      `json:"waiting_approval_tasks"`
+	BlockedTasks        int       `json:"blocked_tasks"`
+	PausedTasks         int       `json:"paused_tasks"`
+	PlanningTasks       int       `json:"planning_tasks"`
+	PendingApprovals    int       `json:"pending_approvals"`
+	ModelProviders      int       `json:"model_providers"`
+	ModelStrategy       string    `json:"model_strategy"`
+	ModelMode           string    `json:"model_mode"`
+	MemoryMode          string    `json:"memory_mode"`
+	CloudRequired       bool      `json:"cloud_required"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type approvalSummary struct {
@@ -37,6 +43,16 @@ type approvalSummary struct {
 
 type taskSummary struct {
 	Status string `json:"status"`
+}
+
+type taskCounts struct {
+	Active          int
+	Running         int
+	Waiting         int
+	WaitingApproval int
+	Blocked         int
+	Paused          int
+	Planning        int
 }
 
 type modelsSummary struct {
@@ -52,7 +68,14 @@ func Write(path string, s Snapshot) error {
 	// Enrichment is count-only and intentionally discards identities, task
 	// content, targets and memory. Failures leave counts at zero rather than
 	// making the public status path a runtime dependency.
-	s.ActiveTasks = countActiveTasks(envOr("KINGAI_TASK_ROOT", "/var/lib/kingai/tasks"))
+	tasks := countTasks(envOr("KINGAI_TASK_ROOT", "/var/lib/kingai/tasks"))
+	s.ActiveTasks = tasks.Active
+	s.RunningTasks = tasks.Running
+	s.WaitingTasks = tasks.Waiting
+	s.WaitingApprovalTasks = tasks.WaitingApproval
+	s.BlockedTasks = tasks.Blocked
+	s.PausedTasks = tasks.Paused
+	s.PlanningTasks = tasks.Planning
 	s.PendingApprovals = countPendingApprovals(envOr("KINGAI_APPROVAL_ROOT", "/var/lib/kingai/approvals"), s.UpdatedAt)
 	s.ModelProviders = countModelProviders(envOr("KINGAI_MODELS", "/etc/kingai/models.json"))
 
@@ -80,12 +103,12 @@ func Write(path string, s Snapshot) error {
 	return nil
 }
 
-func countActiveTasks(root string) int {
+func countTasks(root string) taskCounts {
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) || err != nil {
-		return 0
+		return taskCounts{}
 	}
-	count := 0
+	var counts taskCounts
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -101,11 +124,31 @@ func countActiveTasks(root string) int {
 		switch task.Status {
 		case "completed", "failed", "cancelled":
 			continue
+		case "running":
+			counts.Active++
+			counts.Running++
+		case "waiting":
+			counts.Active++
+			counts.Waiting++
+		case "waiting_approval":
+			counts.Active++
+			counts.WaitingApproval++
+		case "blocked":
+			counts.Active++
+			counts.Blocked++
+		case "paused":
+			counts.Active++
+			counts.Paused++
+		case "planning":
+			counts.Active++
+			counts.Planning++
 		default:
-			count++
+			// created and any future non-terminal state remain visible in the
+			// aggregate active count without publishing unknown state strings.
+			counts.Active++
 		}
 	}
-	return count
+	return counts
 }
 
 func countPendingApprovals(root string, now time.Time) int {
