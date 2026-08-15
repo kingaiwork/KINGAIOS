@@ -1,0 +1,10 @@
+{
+  "schema": "kingai.public-profile.v1",
+  "product_id": "kingai-os",
+  "role": "temporary-public-source-and-product-showcase",
+  "migration_state": "private-source-repository-required",
+  "current_source_visibility": "public",
+  "target_public_role": "commercial-product-open-resources-and-distribution",
+  "audiences": ["users", "developers", "hardware-partners", "enterprise-buyers", "investors"],
+  "governance_source": "kingaiwork/KINGAIASE"
+}
