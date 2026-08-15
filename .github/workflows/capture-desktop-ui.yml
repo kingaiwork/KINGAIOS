@@ -45,9 +45,19 @@ jobs:
         run: |
           set -euo pipefail
           root=dist/rootfs-desktop-amd64
-          session_file=$(find "$root/usr/share/wayland-sessions" -maxdepth 1 -name '*.desktop' -print -quit)
-          test -n "$session_file"
+          session_file="$({
+            find "$root/usr/share/wayland-sessions" -maxdepth 1 -name '*.desktop' -print 2>/dev/null || true
+            find "$root/usr/share/xsessions" -maxdepth 1 -name '*.desktop' -print 2>/dev/null || true
+          } | head -n 1)"
+          if [ -z "$session_file" ]; then
+            echo 'No Plasma/desktop session file found in the built Desktop rootfs.' >&2
+            find "$root/usr/share" -maxdepth 3 -type f \( -path '*/wayland-sessions/*.desktop' -o -path '*/xsessions/*.desktop' \) -print 2>/dev/null || true
+            dpkg_list="$root/usr/share/kingai/legal/packages.tsv"
+            [ -f "$dpkg_list" ] && grep -E 'plasma|kwin|sddm' "$dpkg_list" || true
+            exit 1
+          fi
           session=$(basename "$session_file" .desktop)
+          echo "Using real desktop session: $session_file"
 
           sudo mkdir -p "$root/etc/sddm.conf.d"
           sudo tee "$root/etc/sddm.conf.d/90-kingai-screenshot.conf" >/dev/null <<EOF
