@@ -1,7 +1,6 @@
 package installer
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -268,10 +267,12 @@ func executePlan(r commandRunner, plan Plan, opts ExecuteOptions) (res InstallRe
 			return res, err
 		}
 	}
-	slotState := map[string]any{"schema": 1, "active_slot": "A", "active_version": installedVersion(rootA), "confirmed": true, "boot_attempts": 0, "max_boot_attempts": 3, "rollback_required": false, "updated_at": time.Now().UTC()}
-	sb, _ := json.MarshalIndent(slotState, "", "  ")
-	if err := os.WriteFile(filepath.Join(stateMnt, "kingai/update/slots.json"), append(sb, '\n'), 0o600); err != nil {
-		return res, err
+	slotState, err := kingupdate.NewSlotState(kingupdate.SlotA, installedVersion(rootA))
+	if err != nil {
+		return res, fmt.Errorf("initialize A/B slot state: %w", err)
+	}
+	if err := kingupdate.SaveSlotStateFile(filepath.Join(stateMnt, "kingai/update/slots.json"), slotState); err != nil {
+		return res, fmt.Errorf("durably initialize A/B slot state: %w", err)
 	}
 
 	if err := installGRUB(r, rootA, rootB, aUUID, bUUID); err != nil {
