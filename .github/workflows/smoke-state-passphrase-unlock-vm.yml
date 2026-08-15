@@ -6,6 +6,7 @@ on:
     paths:
       - 'cmd/kingai-installer/**'
       - 'internal/installer/**'
+      - 'internal/update/**'
       - 'scripts/kingai-install-live.sh'
       - 'scripts/build-rootfs.sh'
       - 'distro/packages/server.txt'
@@ -115,6 +116,7 @@ jobs:
           sudo test ! -e ci/check-root/usr/lib/systemd/system/kingai-state-unlock-ci.service
           sudo grep -Fq 'KINGAI_STATE UUID=' ci/check-root/etc/crypttab
           sudo grep -Fq ' none luks' ci/check-root/etc/crypttab
+          sudo grep -Fq 'console=ttyS0,115200n8 plymouth.enable=0' ci/check-root/boot/grub/grub.cfg
           sudo umount ci/check-root
           sudo qemu-nbd --disconnect /dev/nbd0
 
@@ -139,7 +141,7 @@ jobs:
             -drive file=ci/passphrase-test.raw,format=raw,if=virtio \
             -display none -serial stdio -no-reboot
           expect {
-            -nocase -re {passphrase[^\r\n]*KINGAI_STATE|KINGAI_STATE[^\r\n]*passphrase} {
+            -nocase -re {passphrase[^\r\n]*KINGAI_STATE|KINGAI_STATE[^\r\n]*passphrase|password[^\r\n]*KINGAI_STATE|KINGAI_STATE[^\r\n]*password} {
               set seen_prompt 1
               send -- "$pass\r"
               exp_continue
@@ -165,7 +167,11 @@ jobs:
             }
           }
           EOF
-          expect ci/boot-with-passphrase.exp
+          if ! expect ci/boot-with-passphrase.exp; then
+            echo '--- qemu production STATE serial log (tail) ---' >&2
+            tail -n 240 ci/qemu-passphrase.log >&2 || true
+            exit 1
+          fi
           grep -Fq 'KINGAI_PRODUCTION_STATE_UNLOCK_OK' ci/qemu-passphrase.log
 
       - name: Cleanup
