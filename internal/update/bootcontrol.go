@@ -42,6 +42,16 @@ func (b BootController) WriteConfig() error {
 	bInitrd, err := newestBootFile(b.RootBPath, "initrd.img-*")
 	if err != nil { return fmt.Errorf("slot B initrd: %w", err) }
 
+	kernelArgs := "ro console=tty0 console=ttyS0,115200n8"
+	// A Server/other headless image must never let Plymouth consume the only
+	// interactive password agent. STATE is intentionally not unlocked by a
+	// persisted key in production, so systemd's console agent has to remain
+	// reachable over the serial console. Desktop keeps Plymouth when SDDM is
+	// present in either slot so graphical boot is not regressed by A/B updates.
+	if !hasGraphicalBootStack(b.RootAPath) && !hasGraphicalBootStack(b.RootBPath) {
+		kernelArgs += " plymouth.enable=0"
+	}
+
 	grubDir := filepath.Join(b.RootAPath, "boot/grub")
 	if err := os.MkdirAll(grubDir, 0o755); err != nil { return err }
 	cfg := fmt.Sprintf(`set timeout=2
@@ -67,16 +77,29 @@ if [ "$kingai_pending" = "A" -o "$kingai_pending" = "B" ]; then
 fi
 menuentry 'KINGAI OS — Slot A' --id slotA {
   search --no-floppy --fs-uuid --set=root %s
-  linux /boot/%s root=UUID=%s ro console=tty0 console=ttyS0,115200n8
+  linux /boot/%s root=UUID=%s %s
   initrd /boot/%s
 }
 menuentry 'KINGAI OS — Slot B' --id slotB {
   search --no-floppy --fs-uuid --set=root %s
-  linux /boot/%s root=UUID=%s ro console=tty0 console=ttyS0,115200n8
+  linux /boot/%s root=UUID=%s %s
   initrd /boot/%s
 }
-`, b.RootAUUID, filepath.Base(aKernel), b.RootAUUID, filepath.Base(aInitrd), b.RootBUUID, filepath.Base(bKernel), b.RootBUUID, filepath.Base(bInitrd))
+`, b.RootAUUID, filepath.Base(aKernel), b.RootAUUID, kernelArgs, filepath.Base(aInitrd), b.RootBUUID, filepath.Base(bKernel), b.RootBUUID, kernelArgs, filepath.Base(bInitrd))
 	return os.WriteFile(filepath.Join(grubDir, "grub.cfg"), []byte(cfg), 0o644)
+}
+
+func hasGraphicalBootStack(root string) bool {
+	for _, rel := range []string{
+		"usr/lib/systemd/system/sddm.service",
+		"lib/systemd/system/sddm.service",
+		"etc/systemd/system/display-manager.service",
+	} {
+		if _, err := os.Lstat(filepath.Join(root, rel)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func SetPendingBoot(rootA string, active, pending Slot) error {
