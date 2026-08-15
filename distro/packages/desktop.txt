@@ -18,6 +18,7 @@ libglib2.0-bin
 network-manager
 plasma-desktop
 plasma-workspace
+plasma-session-wayland
 kwin-wayland
 xwayland
 sddm
