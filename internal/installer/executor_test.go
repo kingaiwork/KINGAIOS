@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,79 @@ func TestValidateExecutionInputsRejectsWeakKeyPermissions(t *testing.T) {
 	}
 	if info.Mode().Perm()&0o077 == 0 {
 		t.Fatal("test key unexpectedly private")
+	}
+}
+
+func TestPreparePersistentStateLayout(t *testing.T) {
+	rootA := filepath.Join(t.TempDir(), "root-a")
+	rootB := filepath.Join(t.TempDir(), "root-b")
+	state := filepath.Join(t.TempDir(), "state")
+	for _, p := range []string{rootA, rootB, state} {
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := preparePersistentStateLayout(rootA, rootB, state); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"kingai/update", "kingai/runtime/lib", "kingai/runtime/log"} {
+		info, err := os.Stat(filepath.Join(state, rel))
+		if err != nil {
+			t.Fatalf("missing STATE path %s: %v", rel, err)
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Fatalf("STATE path %s mode=%o want 700", rel, got)
+		}
+	}
+	marker := filepath.Join(state, "kingai/runtime/.layout-v1-ready")
+	markerData, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("fresh install STATE marker missing: %v", err)
+	}
+	if string(markerData) != "layout=1\norigin=fresh-install\n" {
+		t.Fatalf("unexpected fresh install STATE marker: %q", markerData)
+	}
+	if info, err := os.Stat(marker); err != nil {
+		t.Fatal(err)
+	} else if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("fresh install STATE marker mode=%o want 600", got)
+	}
+	for _, root := range []string{rootA, rootB} {
+		for _, rel := range []string{"var/lib/kingai-state", "var/lib/kingai", "var/log/kingai"} {
+			if info, err := os.Stat(filepath.Join(root, rel)); err != nil || !info.IsDir() {
+				t.Fatalf("missing installed mountpoint %s: %v", filepath.Join(root, rel), err)
+			}
+		}
+	}
+}
+
+func TestWriteInstalledConfigRequiresEncryptedRuntimeState(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "etc/kingai"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "var/lib/kingai-state"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeInstalledConfig(root, "root-uuid", "efi-uuid", "luks-uuid", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "etc/fstab"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fstab := string(b)
+	for _, want := range []string{
+		"/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults 0 2",
+		"/var/lib/kingai-state/kingai/runtime/lib /var/lib/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0",
+		"/var/lib/kingai-state/kingai/runtime/log /var/log/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0",
+	} {
+		if !strings.Contains(fstab, want) {
+			t.Fatalf("fstab missing %q:\n%s", want, fstab)
+		}
+	}
+	if strings.Contains(fstab, "KINGAI_STATE /var/lib/kingai-state ext4 defaults,nofail") {
+		t.Fatalf("encrypted STATE must not be optional:\n%s", fstab)
 	}
 }
 

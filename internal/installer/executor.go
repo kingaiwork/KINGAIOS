@@ -222,6 +222,9 @@ func executePlan(r commandRunner, plan Plan, opts ExecuteOptions) (res InstallRe
 			return res, err
 		}
 	}
+	if err := preparePersistentStateLayout(rootA, rootB, stateMnt); err != nil {
+		return res, err
+	}
 	for _, dst := range []string{rootA, rootB} {
 		if err := os.MkdirAll(filepath.Join(dst, "boot/efi"), 0o755); err != nil {
 			return res, err
@@ -265,9 +268,6 @@ func executePlan(r commandRunner, plan Plan, opts ExecuteOptions) (res InstallRe
 			return res, err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(stateMnt, "kingai/update"), 0o700); err != nil {
-		return res, err
-	}
 	slotState := map[string]any{"schema": 1, "active_slot": "A", "active_version": installedVersion(rootA), "confirmed": true, "boot_attempts": 0, "max_boot_attempts": 3, "rollback_required": false, "updated_at": time.Now().UTC()}
 	sb, _ := json.MarshalIndent(slotState, "", "  ")
 	if err := os.WriteFile(filepath.Join(stateMnt, "kingai/update/slots.json"), append(sb, '\n'), 0o600); err != nil {
@@ -290,8 +290,70 @@ func copyRoot(r commandRunner, src, dst string) error {
 		filepath.Clean(src)+"/", filepath.Clean(dst)+"/")
 }
 
+func preparePersistentStateLayout(rootA, rootB, stateRoot string) error {
+	for _, p := range []string{
+		filepath.Join(stateRoot, "kingai/update"),
+		filepath.Join(stateRoot, "kingai/runtime/lib"),
+		filepath.Join(stateRoot, "kingai/runtime/log"),
+	} {
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			return fmt.Errorf("create encrypted STATE runtime directory %s: %w", p, err)
+		}
+		if err := os.Chmod(p, 0o700); err != nil {
+			return fmt.Errorf("harden encrypted STATE runtime directory %s: %w", p, err)
+		}
+	}
+	if err := writeFreshStateMarker(stateRoot); err != nil {
+		return err
+	}
+	for _, root := range []string{rootA, rootB} {
+		for _, rel := range []string{"var/lib/kingai-state", "var/lib/kingai", "var/log/kingai"} {
+			p := filepath.Join(root, rel)
+			if err := os.MkdirAll(p, 0o700); err != nil {
+				return fmt.Errorf("create installed persistent mountpoint %s: %w", p, err)
+			}
+		}
+	}
+	return nil
+}
+
+func writeFreshStateMarker(stateRoot string) error {
+	marker := filepath.Join(stateRoot, "kingai/runtime/.layout-v1-ready")
+	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("create encrypted STATE layout marker: %w", err)
+	}
+	if _, err := f.WriteString("layout=1\norigin=fresh-install\n"); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write encrypted STATE layout marker: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("sync encrypted STATE layout marker: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close encrypted STATE layout marker: %w", err)
+	}
+	d, err := os.Open(filepath.Dir(marker))
+	if err != nil {
+		return fmt.Errorf("open encrypted STATE marker directory: %w", err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("sync encrypted STATE marker directory: %w", err)
+	}
+	return nil
+}
+
 func writeInstalledConfig(root, rootUUID, efiUUID, luksUUID string, persistKey bool, keyPath string) error {
-	fstab := fmt.Sprintf("UUID=%s / ext4 defaults,errors=remount-ro 0 1\nUUID=%s /boot/efi vfat umask=0077 0 2\n/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults,nofail 0 2\n", rootUUID, efiUUID)
+	fstab := fmt.Sprintf(
+		"UUID=%s / ext4 defaults,errors=remount-ro 0 1\n"+
+			"UUID=%s /boot/efi vfat umask=0077 0 2\n"+
+			"/dev/mapper/KINGAI_STATE /var/lib/kingai-state ext4 defaults 0 2\n"+
+			"/var/lib/kingai-state/kingai/runtime/lib /var/lib/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0\n"+
+			"/var/lib/kingai-state/kingai/runtime/log /var/log/kingai none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0\n",
+		rootUUID, efiUUID,
+	)
 	if err := os.WriteFile(filepath.Join(root, "etc/fstab"), []byte(fstab), 0o644); err != nil {
 		return err
 	}

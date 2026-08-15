@@ -14,15 +14,21 @@ permissions:
 
 jobs:
   analyze:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: github/codeql-action/init@v4
-        with:
-          languages: go
-      - uses: actions/setup-go@v7
+      # Install the exact Go toolchain before CodeQL initializes tracing.
+      # All release/security-chain Actions are pinned to immutable commits.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
-      - run: go build ./...
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: go
+          build-mode: manual
+      - name: Build traced Go code
+        run: go build ./...
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:go
