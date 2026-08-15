@@ -31,47 +31,97 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
       - name: Install image, VM and capture tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap ubuntu-keyring zstd squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin grub-common mtools qemu-system-x86 ovmf socat imagemagick
+
       - name: Build Desktop root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
-      - name: Inject graphical readiness probe
+
+      - name: Configure isolated screenshot mode
         shell: bash
         run: |
+          set -euo pipefail
           root=dist/rootfs-desktop-amd64
-          sudo tee "$root/usr/lib/systemd/system/kingai-desktop-smoke.service" >/dev/null <<'EOF'
+          session_file=$(find "$root/usr/share/wayland-sessions" -maxdepth 1 -name '*.desktop' -print -quit)
+          test -n "$session_file"
+          session=$(basename "$session_file" .desktop)
+
+          sudo mkdir -p "$root/etc/sddm.conf.d"
+          sudo tee "$root/etc/sddm.conf.d/90-kingai-screenshot.conf" >/dev/null <<EOF
+          [Autologin]
+          User=kingai
+          Session=$session
+          Relogin=false
+          EOF
+
+          # A graphical.target marker is too early: sddm can be active while the
+          # framebuffer is still blank. This service waits for the real Plasma
+          # shell process before allowing a website capture.
+          sudo tee "$root/usr/lib/systemd/system/kingai-desktop-capture-ready.service" >/dev/null <<'EOF'
           [Unit]
-          Description=KINGAI Desktop graphical readiness marker
+          Description=KINGAI Desktop real-session capture readiness
           Requires=sddm.service
           After=sddm.service
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'echo KINGAI_DESKTOP_GRAPHICAL_READY > /dev/ttyS0'
+          ExecStart=/bin/sh -c 'for n in $(seq 1 180); do for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && { sleep 8; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; }; done; sleep 1; done; exit 1'
 
           [Install]
           WantedBy=graphical.target
           EOF
           sudo mkdir -p "$root/etc/systemd/system/graphical.target.wants"
-          sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-smoke.service "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-smoke.service"
+          sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-capture-ready.service "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-capture-ready.service"
+
+          # Screenshot mode is test-only. It carries no credentials, API keys,
+          # personal names, private addresses or production data.
+          printf 'KINGAI screenshot mode\n' | sudo tee "$root/etc/kingai/screenshot-mode" >/dev/null
+
       - name: Build Desktop Live ISO
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh desktop dist
-      - name: Capture real Desktop framebuffer
+
+      - name: Capture and validate real Desktop framebuffer
         run: |
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
+          test -n "$iso"
           chmod +x scripts/capture-desktop-frame.sh
           bash scripts/capture-desktop-frame.sh "$iso" kingai-desktop-real.png
+
+      - name: Create capture metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          version = open('VERSION', encoding='utf-8').read().strip()
+          data = {
+              'product': 'KINGAI OS Desktop',
+              'source_version': version,
+              'edition': 'Desktop',
+              'stage': 'D5 Alpha / Pre-Alpha',
+              'capture_type': 'Actual KINGAI OS',
+              'environment': 'QEMU Live VM',
+              'commit': os.environ['GITHUB_SHA'],
+              'captured_at': datetime.now(timezone.utc).isoformat(),
+              'privacy': 'isolated screenshot mode; no production secrets',
+          }
+          open('kingai-desktop-real.json', 'w', encoding='utf-8').write(json.dumps(data, indent=2) + '\n')
+          PY
+
       - name: Upload capture artifact
         uses: actions/upload-artifact@v4
         with:
           name: kingai-desktop-real-capture
           path: |
             kingai-desktop-real.png
+            kingai-desktop-real.json
             kingai-desktop-real.log
           if-no-files-found: error
           retention-days: 30
+
       - name: Publish capture to static website when token is configured
         env:
           SYNC_TOKEN: ${{ secrets.KINGAI_WEB_SYNC_TOKEN }}
@@ -84,11 +134,12 @@ jobs:
           GH_TOKEN="$SYNC_TOKEN" gh repo clone kingaiwork/Kingaiosweb web -- --depth=1
           mkdir -p web/public/assets/captures
           cp kingai-desktop-real.png web/public/assets/captures/desktop-latest.png
+          cp kingai-desktop-real.json web/public/assets/captures/desktop-latest.json
           cd web
           git config user.name 'kingai-capture[bot]'
           git config user.email '66586837+kingaiwork@users.noreply.github.com'
-          git add -- public/assets/captures/desktop-latest.png
+          git add -- public/assets/captures/desktop-latest.png public/assets/captures/desktop-latest.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m '[capture-os] refresh real desktop screenshot'
+          git commit -m '[capture-os] refresh verified real desktop screenshot'
           GH_TOKEN="$SYNC_TOKEN" gh auth setup-git
           git push origin HEAD:main
