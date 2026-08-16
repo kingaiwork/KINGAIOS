@@ -30,7 +30,7 @@ addIfAvailable(panel, "org.kde.plasma.systemtray");
 addIfAvailable(panel, "org.kde.plasma.digitalclock");
 panel.reloadConfig();
 
-const wallpaper = "file:///usr/share/kingai/desktop/wallpapers/kingai-flow.jpg";
+const wallpaper = "file:///usr/share/kingai/desktop/wallpapers/kingai-flow.svg";
 for (const desktop of desktops()) {
     desktop.wallpaperPlugin = "org.kde.image";
     desktop.currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
