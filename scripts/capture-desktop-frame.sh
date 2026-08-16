@@ -31,9 +31,14 @@ qemu-system-x86_64 \
 pid=$!
 
 ready=0
+not_ready=0
 for _ in $(seq 1 300); do
   if grep -Fq 'KINGAI_DESKTOP_SESSION_READY' "$log" 2>/dev/null; then
     ready=1
+    break
+  fi
+  if grep -Fq 'KINGAI_DESKTOP_SESSION_NOT_READY' "$log" 2>/dev/null; then
+    not_ready=1
     break
   fi
   kill -0 "$pid" 2>/dev/null || break
@@ -42,7 +47,11 @@ done
 
 if [[ $ready -ne 1 ]]; then
   cat "$log" 2>/dev/null || true
-  echo 'Desktop did not reach a real Plasma session.' >&2
+  if [[ $not_ready -eq 1 ]]; then
+    echo 'Desktop reported that the KINGAI Plasma visual state was not ready.' >&2
+  else
+    echo 'Desktop did not reach a verified real Plasma session before the capture deadline.' >&2
+  fi
   exit 1
 fi
 
