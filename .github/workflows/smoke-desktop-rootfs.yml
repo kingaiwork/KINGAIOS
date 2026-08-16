@@ -64,10 +64,14 @@ jobs:
           sudo test -f "$root/etc/xdg/autostart/kingai-welcome.desktop"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
           sudo test -f "$root/usr/share/plasma/look-and-feel/org.kingai.intelligence/manifest.json"
-          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
+          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json"
+          sudo test ! -e "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml"
           sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.service"
           sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.timer"
+          if sudo chroot "$root" sh -c 'command -v kpackagetool6 >/dev/null'; then
+            sudo chroot "$root" kpackagetool6 --type Plasma/Applet --list | grep -Fq 'org.kingai.agentcenter'
+          fi
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
           leaked=$(sudo find "$root/etc/kingai" "$root/usr/lib/kingai" "$root/usr/share/kingai" -uid "$(id -u)" -print -quit)
           test -z "$leaked" || { echo "build-host ownership leaked into KINGAI desktop files: $leaked"; exit 1; }
@@ -79,10 +83,11 @@ jobs:
               data=json.loads((root/name/'manifest.json').read_text())
               assert data['KPackageStructure']=='Plasma/LookAndFeel'
               assert data['X-Plasma-API-Minimum-Version']=='6.0'
-          p=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json')
+          p=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json')
           data=json.loads(p.read_text())
           assert data['KPackageStructure']=='Plasma/Applet'
           assert data['X-Plasma-API-Minimum-Version']=='6.0'
+          assert data['KPlugin']['Id']=='org.kingai.agentcenter'
           assert data['KPlugin']['Name']=='KINGAI Center'
           qml=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/contents/ui/main.qml').read_text()
           for token in ('KINGAI Center','activeTasks','pendingApprovals','modelProviders','public-status.json'):
