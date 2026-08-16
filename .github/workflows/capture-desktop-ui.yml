@@ -45,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           root=dist/rootfs-desktop-amd64
+          capture_experience=kingai-flow
           session_file="$({
             find "$root/usr/share/wayland-sessions" -maxdepth 1 -name '*.desktop' -print 2>/dev/null || true
             find "$root/usr/share/xsessions" -maxdepth 1 -name '*.desktop' -print 2>/dev/null || true
@@ -58,6 +59,7 @@ jobs:
           fi
           session=$(basename "$session_file" .desktop)
           echo "Using real desktop session: $session_file"
+          echo "Applying screenshot experience: $capture_experience"
 
           sudo mkdir -p "$root/etc/sddm.conf.d"
           sudo tee "$root/etc/sddm.conf.d/90-kingai-screenshot.conf" >/dev/null <<EOF
@@ -67,18 +69,60 @@ jobs:
           Relogin=false
           EOF
 
+          # Casper creates the live desktop account from /etc/skel. Seed a real
+          # KINGAI experience so the first-run Welcome window exits immediately
+          # and the capture validates the applied Plasma shell, not only Welcome.
+          sudo mkdir -p "$root/etc/skel/.config"
+          sudo tee "$root/etc/skel/.config/kingai-desktop.ini" >/dev/null <<EOF
+          [General]
+          experience=$capture_experience
+          EOF
+
+          # Apply the selected profile from inside the graphical session. Retry
+          # until Plasma's D-Bus endpoint is ready, then leave an explicit marker
+          # for the VM readiness gate below.
+          sudo tee "$root/usr/local/bin/kingai-capture-apply-profile" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -eu
+          marker="$HOME/.cache/kingai-capture-profile-applied"
+          log="$HOME/.cache/kingai-capture-profile.log"
+          mkdir -p "$HOME/.cache"
+          rm -f "$marker"
+          : > "$log"
+          for n in $(seq 1 45); do
+            if /usr/bin/kingai desktop apply >>"$log" 2>&1; then
+              touch "$marker"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$log" >&2 || true
+          exit 1
+          EOF
+          sudo chmod 0755 "$root/usr/local/bin/kingai-capture-apply-profile"
+          sudo mkdir -p "$root/etc/xdg/autostart"
+          sudo tee "$root/etc/xdg/autostart/kingai-capture-apply-profile.desktop" >/dev/null <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=KINGAI Desktop Capture Profile
+          Exec=/usr/local/bin/kingai-capture-apply-profile
+          OnlyShowIn=KDE;
+          X-KDE-StartupNotify=false
+          NoDisplay=true
+          EOF
+
           # A graphical.target marker is too early: sddm can be active while the
-          # framebuffer is still blank. This service waits for the real Plasma
-          # shell process before allowing a website capture.
+          # framebuffer is blank. Require both a real Plasma shell and successful
+          # KINGAI profile application before allowing the screenshot.
           sudo tee "$root/usr/lib/systemd/system/kingai-desktop-capture-ready.service" >/dev/null <<'EOF'
           [Unit]
-          Description=KINGAI Desktop real-session capture readiness
+          Description=KINGAI Desktop applied-session capture readiness
           Requires=sddm.service
           After=sddm.service
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'for n in $(seq 1 180); do for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && { sleep 8; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; }; done; sleep 1; done; exit 1'
+          ExecStart=/bin/sh -c 'for n in $(seq 1 240); do plasma=0; for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && plasma=1 && break; done; if [ "$plasma" = 1 ] && [ -f /home/kingai/.cache/kingai-capture-profile-applied ]; then sleep 6; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; fi; sleep 1; done; echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; [ -f /home/kingai/.cache/kingai-capture-profile.log ] && cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 || true; exit 1'
 
           [Install]
           WantedBy=graphical.target
@@ -114,6 +158,9 @@ jobs:
               'stage': 'D5 Alpha / Pre-Alpha',
               'capture_type': 'Actual KINGAI OS',
               'environment': 'QEMU Live VM',
+              'experience_id': 'kingai-flow',
+              'experience': 'KINGAI Flow',
+              'validation': 'Plasma shell running and KINGAI desktop experience applied before framebuffer capture',
               'commit': os.environ['GITHUB_SHA'],
               'captured_at': datetime.now(timezone.utc).isoformat(),
               'privacy': 'isolated screenshot mode; no production secrets',
