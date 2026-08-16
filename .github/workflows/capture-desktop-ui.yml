@@ -78,34 +78,85 @@ jobs:
           experience=$capture_experience
           EOF
 
-          # Apply the selected profile from inside the graphical session. Do not
-          # mark the VM ready until Plasma has persisted both the KINGAI panel
-          # widget and KINGAI Flow wallpaper into the live user's configuration.
+          # Apply the selected profile from inside the graphical session. Keep
+          # apply retries and visual-state settling as separate bounded phases so
+          # a missing panel/wallpaper can fail quickly with useful diagnostics.
           sudo tee "$root/usr/local/bin/kingai-capture-apply-profile" >/dev/null <<'EOF'
           #!/bin/sh
           set -eu
           marker="$HOME/.cache/kingai-capture-profile-applied"
+          failed="$HOME/.cache/kingai-capture-profile-failed"
           log="$HOME/.cache/kingai-capture-profile.log"
           plasma_cfg="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
           mkdir -p "$HOME/.cache"
-          rm -f "$marker"
+          rm -f "$marker" "$failed"
           : > "$log"
+
+          echo "KINGAI capture user=$(id -un) home=$HOME session=${XDG_SESSION_TYPE:-unknown} desktop=${XDG_CURRENT_DESKTOP:-unknown}" >>"$log"
+          if command -v kpackagetool6 >/dev/null 2>&1; then
+            echo '=== Plasma/Applet registry ===' >>"$log"
+            kpackagetool6 --type Plasma/Applet --list >>"$log" 2>&1 || true
+          fi
+
+          apply_ok=0
           for n in $(seq 1 45); do
+            echo "=== kingai desktop apply attempt $n ===" >>"$log"
             if /usr/bin/kingai desktop apply >>"$log" 2>&1; then
-              for settle in $(seq 1 30); do
-                if [ -f "$plasma_cfg" ] \
-                  && grep -Fq 'org.kingai.agentcenter' "$plasma_cfg" \
-                  && grep -Fq 'kingai-flow.svg' "$plasma_cfg"; then
-                  touch "$marker"
-                  exit 0
-                fi
-                sleep 1
-              done
-              echo 'KINGAI desktop apply returned success but expected Flow panel/wallpaper config was not persisted.' >>"$log"
+              apply_ok=1
+              break
             fi
             sleep 1
           done
-          cat "$log" >&2 || true
+          if [ "$apply_ok" -ne 1 ]; then
+            echo 'KINGAI desktop apply never succeeded.' >>"$log"
+            touch "$failed"
+            cat "$log" >/dev/ttyS0 2>/dev/null || true
+            exit 1
+          fi
+
+          # Probe the live Plasma object model as well as the persisted KConfig.
+          # Runtime state is the stronger screenshot condition; file persistence
+          # remains useful evidence and catches regressions across shell restarts.
+          probe_js='(function(){var a=false,w=false;var ps=panels();for(var i=0;i<ps.length;i++){var ids=ps[i].widgetIds;for(var j=0;j<ids.length;j++){var x=ps[i].widgetById(ids[j]);if(x&&x.type==="org.kingai.agentcenter")a=true;}}var ds=desktops();for(var k=0;k<ds.length;k++){ds[k].currentConfigGroup=["Wallpaper","org.kde.image","General"];var img=String(ds[k].readConfig("Image",""));if(img.indexOf("kingai-flow.svg")>=0)w=true;}return "KINGAI_RUNTIME_STATE agent="+a+" wallpaper="+w;})()'
+          for settle in $(seq 1 75); do
+            runtime_state=""
+            for qdbus in qdbus6 /usr/lib/qt6/bin/qdbus qdbus; do
+              if command -v "$qdbus" >/dev/null 2>&1 || [ -x "$qdbus" ]; then
+                runtime_state=$("$qdbus" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$probe_js" 2>&1 || true)
+                [ -n "$runtime_state" ] && break
+              fi
+            done
+            config_agent=0
+            config_wallpaper=0
+            if [ -f "$plasma_cfg" ]; then
+              grep -Fq 'org.kingai.agentcenter' "$plasma_cfg" && config_agent=1 || true
+              grep -Fq 'kingai-flow.svg' "$plasma_cfg" && config_wallpaper=1 || true
+            fi
+            if printf '%s' "$runtime_state" | grep -Fq 'agent=true wallpaper=true'; then
+              echo "Runtime visual state ready on settle $settle: $runtime_state" >>"$log"
+              touch "$marker"
+              exit 0
+            fi
+            if [ "$config_agent" -eq 1 ] && [ "$config_wallpaper" -eq 1 ]; then
+              echo "Persisted visual state ready on settle $settle: $runtime_state" >>"$log"
+              touch "$marker"
+              exit 0
+            fi
+            if [ "$settle" -eq 1 ] || [ $((settle % 15)) -eq 0 ]; then
+              echo "settle=$settle runtime=[$runtime_state] config_agent=$config_agent config_wallpaper=$config_wallpaper" >>"$log"
+            fi
+            sleep 1
+          done
+
+          echo 'KINGAI desktop apply succeeded but the expected Flow runtime/persisted visual state did not become ready.' >>"$log"
+          echo '=== plasma appletsrc ===' >>"$log"
+          if [ -f "$plasma_cfg" ]; then
+            cat "$plasma_cfg" >>"$log" 2>&1 || true
+          else
+            echo "missing: $plasma_cfg" >>"$log"
+          fi
+          touch "$failed"
+          cat "$log" >/dev/ttyS0 2>/dev/null || true
           exit 1
           EOF
           sudo chmod 0755 "$root/usr/local/bin/kingai-capture-apply-profile"
@@ -121,8 +172,8 @@ jobs:
           EOF
 
           # A graphical.target marker is too early: sddm can be active while the
-          # framebuffer is blank. Require both a real Plasma shell and successful
-          # KINGAI profile application before allowing the screenshot.
+          # framebuffer is blank. Require a real Plasma shell plus the bounded
+          # user-session visual probe; surface a failed probe immediately.
           sudo tee "$root/usr/lib/systemd/system/kingai-desktop-capture-ready.service" >/dev/null <<'EOF'
           [Unit]
           Description=KINGAI Desktop applied-session capture readiness
@@ -131,7 +182,7 @@ jobs:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'for n in $(seq 1 270); do plasma=0; for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && plasma=1 && break; done; if [ "$plasma" = 1 ] && [ -f /home/kingai/.cache/kingai-capture-profile-applied ]; then sleep 8; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; fi; sleep 1; done; echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; [ -f /home/kingai/.cache/kingai-capture-profile.log ] && cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 || true; exit 1'
+          ExecStart=/bin/sh -c 'for n in $(seq 1 240); do plasma=0; for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && plasma=1 && break; done; if [ -f /home/kingai/.cache/kingai-capture-profile-failed ]; then echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 2>/dev/null || true; exit 1; fi; if [ "$plasma" = 1 ] && [ -f /home/kingai/.cache/kingai-capture-profile-applied ]; then sleep 8; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; fi; sleep 1; done; echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; [ -f /home/kingai/.cache/kingai-capture-profile.log ] && cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 || true; exit 1'
 
           [Install]
           WantedBy=graphical.target
@@ -180,7 +231,7 @@ jobs:
               'environment': 'QEMU Live VM',
               'experience_id': 'kingai-flow',
               'experience': 'KINGAI Flow',
-              'validation': 'Plasma shell running with persisted KINGAI Flow panel and wallpaper configuration before framebuffer capture',
+              'validation': 'Plasma shell running with KINGAI Center and KINGAI Flow wallpaper verified in live runtime or persisted Plasma configuration before framebuffer capture',
               'commit': os.environ['GITHUB_SHA'],
               'captured_at': datetime.now(timezone.utc).isoformat(),
               'privacy': 'isolated screenshot mode; no production secrets',
