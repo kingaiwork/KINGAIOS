@@ -52,35 +52,33 @@ jobs:
           } | head -n 1)"
           if [ -z "$session_file" ]; then
             echo 'No Plasma/desktop session file found in the built Desktop rootfs.' >&2
-            find "$root/usr/share" -maxdepth 3 -type f \( -path '*/wayland-sessions/*.desktop' -o -path '*/xsessions/*.desktop' \) -print 2>/dev/null || true
-            dpkg_list="$root/usr/share/kingai/legal/packages.tsv"
-            [ -f "$dpkg_list" ] && grep -E 'plasma|kwin|sddm' "$dpkg_list" || true
             exit 1
           fi
           session=$(basename "$session_file" .desktop)
+          session_rel=${session_file#"$root"}
           echo "Using real desktop session: $session_file"
           echo "Applying screenshot experience: $capture_experience"
 
-          sudo mkdir -p "$root/etc/sddm.conf.d"
+          sudo mkdir -p "$root/etc/sddm.conf.d" "$root/etc/kingai"
           sudo tee "$root/etc/sddm.conf.d/90-kingai-screenshot.conf" >/dev/null <<EOF
           [Autologin]
           User=kingai
           Session=$session
           Relogin=false
           EOF
+          printf '%s\n' "$session_rel" | sudo tee "$root/etc/kingai/capture-session-file" >/dev/null
 
-          # Casper creates the live desktop account from /etc/skel. Seed a real
-          # KINGAI experience so the first-run Welcome window exits immediately
-          # and the capture validates the applied Plasma shell, not only Welcome.
+          # Casper creates the live desktop account from /etc/skel. Seed the Flow
+          # choice so the normal Welcome autostart does not cover the desktop.
           sudo mkdir -p "$root/etc/skel/.config"
           sudo tee "$root/etc/skel/.config/kingai-desktop.ini" >/dev/null <<EOF
           [General]
           experience=$capture_experience
           EOF
 
-          # Apply the selected profile from inside the graphical session. Keep
-          # apply retries and visual-state settling as separate bounded phases so
-          # a missing panel/wallpaper can fail quickly with useful diagnostics.
+          # User-session helper. Every potentially blocking KDE/DBus command has
+          # a hard timeout, and the helper emits a serial marker immediately so a
+          # failed SDDM autologin can be distinguished from a hung desktop apply.
           sudo tee "$root/usr/local/bin/kingai-capture-apply-profile" >/dev/null <<'EOF'
           #!/bin/sh
           set -eu
@@ -91,38 +89,36 @@ jobs:
           mkdir -p "$HOME/.cache"
           rm -f "$marker" "$failed"
           : > "$log"
+          echo KINGAI_USER_SESSION_HELPER_STARTED >/dev/ttyS0 2>/dev/null || true
+          echo "KINGAI capture user=$(id -un) uid=$(id -u) home=$HOME session=${XDG_SESSION_TYPE:-unknown} desktop=${XDG_CURRENT_DESKTOP:-unknown} display=${WAYLAND_DISPLAY:-none}" >>"$log"
 
-          echo "KINGAI capture user=$(id -un) home=$HOME session=${XDG_SESSION_TYPE:-unknown} desktop=${XDG_CURRENT_DESKTOP:-unknown}" >>"$log"
           if command -v kpackagetool6 >/dev/null 2>&1; then
             echo '=== Plasma/Applet registry ===' >>"$log"
-            kpackagetool6 --type Plasma/Applet --list >>"$log" 2>&1 || true
+            timeout 8s kpackagetool6 --type Plasma/Applet --list >>"$log" 2>&1 || echo 'kpackagetool6 timed out/failed' >>"$log"
           fi
 
           apply_ok=0
-          for n in $(seq 1 45); do
+          for n in $(seq 1 15); do
             echo "=== kingai desktop apply attempt $n ===" >>"$log"
-            if /usr/bin/kingai desktop apply >>"$log" 2>&1; then
+            if timeout 10s /usr/bin/kingai desktop apply >>"$log" 2>&1; then
               apply_ok=1
               break
             fi
             sleep 1
           done
           if [ "$apply_ok" -ne 1 ]; then
-            echo 'KINGAI desktop apply never succeeded.' >>"$log"
+            echo 'KINGAI desktop apply never succeeded within bounded retries.' >>"$log"
             touch "$failed"
             cat "$log" >/dev/ttyS0 2>/dev/null || true
             exit 1
           fi
 
-          # Probe the live Plasma object model as well as the persisted KConfig.
-          # Runtime state is the stronger screenshot condition; file persistence
-          # remains useful evidence and catches regressions across shell restarts.
           probe_js='(function(){var a=false,w=false;var ps=panels();for(var i=0;i<ps.length;i++){var ids=ps[i].widgetIds;for(var j=0;j<ids.length;j++){var x=ps[i].widgetById(ids[j]);if(x&&x.type==="org.kingai.agentcenter")a=true;}}var ds=desktops();for(var k=0;k<ds.length;k++){ds[k].currentConfigGroup=["Wallpaper","org.kde.image","General"];var img=String(ds[k].readConfig("Image",""));if(img.indexOf("kingai-flow.svg")>=0)w=true;}return "KINGAI_RUNTIME_STATE agent="+a+" wallpaper="+w;})()'
-          for settle in $(seq 1 75); do
+          for settle in $(seq 1 60); do
             runtime_state=""
             for qdbus in qdbus6 /usr/lib/qt6/bin/qdbus qdbus; do
               if command -v "$qdbus" >/dev/null 2>&1 || [ -x "$qdbus" ]; then
-                runtime_state=$("$qdbus" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$probe_js" 2>&1 || true)
+                runtime_state=$(timeout 4s "$qdbus" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$probe_js" 2>&1 || true)
                 [ -n "$runtime_state" ] && break
               fi
             done
@@ -142,24 +138,21 @@ jobs:
               touch "$marker"
               exit 0
             fi
-            if [ "$settle" -eq 1 ] || [ $((settle % 15)) -eq 0 ]; then
+            if [ "$settle" -eq 1 ] || [ $((settle % 10)) -eq 0 ]; then
               echo "settle=$settle runtime=[$runtime_state] config_agent=$config_agent config_wallpaper=$config_wallpaper" >>"$log"
             fi
             sleep 1
           done
 
-          echo 'KINGAI desktop apply succeeded but the expected Flow runtime/persisted visual state did not become ready.' >>"$log"
+          echo 'KINGAI desktop apply succeeded but Flow runtime/persisted visual state did not become ready.' >>"$log"
           echo '=== plasma appletsrc ===' >>"$log"
-          if [ -f "$plasma_cfg" ]; then
-            cat "$plasma_cfg" >>"$log" 2>&1 || true
-          else
-            echo "missing: $plasma_cfg" >>"$log"
-          fi
+          if [ -f "$plasma_cfg" ]; then cat "$plasma_cfg" >>"$log" 2>&1 || true; else echo "missing: $plasma_cfg" >>"$log"; fi
           touch "$failed"
           cat "$log" >/dev/ttyS0 2>/dev/null || true
           exit 1
           EOF
           sudo chmod 0755 "$root/usr/local/bin/kingai-capture-apply-profile"
+
           sudo mkdir -p "$root/etc/xdg/autostart"
           sudo tee "$root/etc/xdg/autostart/kingai-capture-apply-profile.desktop" >/dev/null <<'EOF'
           [Desktop Entry]
@@ -171,9 +164,54 @@ jobs:
           NoDisplay=true
           EOF
 
-          # A graphical.target marker is too early: sddm can be active while the
-          # framebuffer is blank. Require a real Plasma shell plus the bounded
-          # user-session visual probe; surface a failed probe immediately.
+          # System-side observer. It never marks success merely because SDDM is
+          # active: it requires a real plasmashell plus the user helper marker.
+          # Failure diagnostics include SDDM journal + Wayland session log.
+          sudo tee "$root/usr/local/bin/kingai-capture-readiness" >/dev/null <<'EOF'
+          #!/bin/sh
+          set -u
+          tty=/dev/ttyS0
+          echo KINGAI_CAPTURE_READINESS_SERVICE_STARTED >"$tty" 2>/dev/null || true
+          for n in $(seq 1 180); do
+            plasma=0
+            for f in /proc/[0-9]*/comm; do
+              [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && plasma=1 && break
+            done
+            if [ -f /home/kingai/.cache/kingai-capture-profile-failed ]; then
+              echo KINGAI_DESKTOP_SESSION_NOT_READY >"$tty"
+              cat /home/kingai/.cache/kingai-capture-profile.log >"$tty" 2>/dev/null || true
+              exit 1
+            fi
+            if [ "$plasma" = 1 ] && [ -f /home/kingai/.cache/kingai-capture-profile-applied ]; then
+              sleep 8
+              echo KINGAI_DESKTOP_SESSION_READY >"$tty"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo KINGAI_DESKTOP_SESSION_NOT_READY >"$tty"
+          echo '=== capture readiness diagnostics ===' >"$tty"
+          echo '--- autologin config ---' >"$tty"
+          cat /etc/sddm.conf.d/90-kingai-screenshot.conf >"$tty" 2>/dev/null || true
+          echo '--- live user ---' >"$tty"
+          getent passwd kingai >"$tty" 2>/dev/null || true
+          echo '--- desktop processes ---' >"$tty"
+          ps -eo pid,uid,user,comm,args | grep -E 'sddm|plasma|kwin|startplasma' >"$tty" 2>/dev/null || true
+          echo '--- selected session file ---' >"$tty"
+          session_file=$(cat /etc/kingai/capture-session-file 2>/dev/null || true)
+          echo "$session_file" >"$tty"
+          [ -n "$session_file" ] && cat "$session_file" >"$tty" 2>/dev/null || true
+          echo '--- sddm journal ---' >"$tty"
+          journalctl -b -u sddm --no-pager -n 220 >"$tty" 2>/dev/null || true
+          echo '--- wayland session log ---' >"$tty"
+          cat /home/kingai/.local/share/sddm/wayland-session.log >"$tty" 2>/dev/null || true
+          echo '--- KINGAI user helper log ---' >"$tty"
+          cat /home/kingai/.cache/kingai-capture-profile.log >"$tty" 2>/dev/null || true
+          exit 1
+          EOF
+          sudo chmod 0755 "$root/usr/local/bin/kingai-capture-readiness"
+
           sudo tee "$root/usr/lib/systemd/system/kingai-desktop-capture-ready.service" >/dev/null <<'EOF'
           [Unit]
           Description=KINGAI Desktop applied-session capture readiness
@@ -182,7 +220,7 @@ jobs:
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'for n in $(seq 1 240); do plasma=0; for f in /proc/[0-9]*/comm; do [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = plasmashell ] && plasma=1 && break; done; if [ -f /home/kingai/.cache/kingai-capture-profile-failed ]; then echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 2>/dev/null || true; exit 1; fi; if [ "$plasma" = 1 ] && [ -f /home/kingai/.cache/kingai-capture-profile-applied ]; then sleep 8; echo KINGAI_DESKTOP_SESSION_READY > /dev/ttyS0; exit 0; fi; sleep 1; done; echo KINGAI_DESKTOP_SESSION_NOT_READY > /dev/ttyS0; [ -f /home/kingai/.cache/kingai-capture-profile.log ] && cat /home/kingai/.cache/kingai-capture-profile.log > /dev/ttyS0 || true; exit 1'
+          ExecStart=/usr/local/bin/kingai-capture-readiness
 
           [Install]
           WantedBy=graphical.target
@@ -190,8 +228,6 @@ jobs:
           sudo mkdir -p "$root/etc/systemd/system/graphical.target.wants"
           sudo ln -sfn /usr/lib/systemd/system/kingai-desktop-capture-ready.service "$root/etc/systemd/system/graphical.target.wants/kingai-desktop-capture-ready.service"
 
-          # Screenshot mode is test-only. It carries no credentials, API keys,
-          # personal names, private addresses or production data.
           printf 'KINGAI screenshot mode\n' | sudo tee "$root/etc/kingai/screenshot-mode" >/dev/null
 
       - name: Build Desktop Live ISO
@@ -231,7 +267,7 @@ jobs:
               'environment': 'QEMU Live VM',
               'experience_id': 'kingai-flow',
               'experience': 'KINGAI Flow',
-              'validation': 'Plasma shell running with KINGAI Center and KINGAI Flow wallpaper verified in live runtime or persisted Plasma configuration before framebuffer capture',
+              'validation': 'Real Plasma user session with KINGAI Center and KINGAI Flow wallpaper verified in runtime or persisted Plasma configuration before framebuffer capture',
               'commit': os.environ['GITHUB_SHA'],
               'captured_at': datetime.now(timezone.utc).isoformat(),
               'privacy': 'isolated screenshot mode; no production secrets',
