@@ -38,32 +38,48 @@ jobs:
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
       - name: Validate Desktop image contents
         run: |
+          set -euo pipefail
           root=dist/rootfs-desktop-amd64
           sudo test -x "$root/usr/lib/kingai/kingai-welcome"
-          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
+          sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json"
+          sudo test ! -e "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
+          sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-flow.js"
+          sudo test -f "$root/usr/share/kingai/desktop/wallpapers/kingai-flow.svg"
           sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.service"
           sudo test -f "$root/usr/lib/systemd/system/kingai-health-scan.timer"
           sudo chroot "$root" dpkg-query -W \
-            plasma-desktop plasma-workspace kwin-wayland sddm \
+            plasma-desktop plasma-workspace plasma-session-wayland kwin-wayland sddm qdbus-qt6 \
             ubuntu-minimal apt console-setup apport update-notifier-common \
             ubuntu-release-upgrader-core libglib2.0-bin
+          if sudo chroot "$root" sh -c 'command -v kpackagetool6 >/dev/null'; then
+            sudo chroot "$root" kpackagetool6 --type Plasma/Applet --list | grep -Fq 'org.kingai.agentcenter'
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('dist/rootfs-desktop-amd64/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json')
+          data=json.loads(p.read_text())
+          assert data['KPackageStructure']=='Plasma/Applet'
+          assert data['X-Plasma-API-Minimum-Version']=='6.0'
+          assert data['KPlugin']['Id']=='org.kingai.agentcenter'
+          PY
           test "$(sudo stat -c '%u:%g' "$root")" = '0:0'
           test "$(readlink "$root/etc/systemd/system/default.target")" = '/usr/lib/systemd/system/graphical.target'
           test "$(readlink "$root/etc/systemd/system/display-manager.service")" = '/usr/lib/systemd/system/sddm.service'
-      - name: Inject graphical readiness probe
+      - name: Inject display-manager readiness probe
         shell: bash
         run: |
           root=dist/rootfs-desktop-amd64
           sudo tee "$root/usr/lib/systemd/system/kingai-desktop-smoke.service" >/dev/null <<'EOF'
           [Unit]
-          Description=KINGAI Desktop CI graphical readiness marker
+          Description=KINGAI Desktop CI display-manager readiness marker
           Requires=sddm.service
           After=sddm.service
 
           [Service]
           Type=oneshot
-          ExecStart=/bin/sh -c 'echo KINGAI_DESKTOP_GRAPHICAL_READY > /dev/ttyS0'
+          ExecStart=/bin/sh -c 'echo KINGAI_DESKTOP_DISPLAY_MANAGER_READY > /dev/ttyS0'
 
           [Install]
           WantedBy=graphical.target
@@ -89,7 +105,7 @@ jobs:
           assert manifest['boot_mode']==['UEFI','BIOS']
           assert sbom['spdxVersion']=='SPDX-2.3'
           PY
-      - name: QEMU Desktop BIOS graphical boot smoke
+      - name: QEMU Desktop BIOS display-manager boot smoke
         shell: bash
         run: |
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
@@ -101,12 +117,12 @@ jobs:
           cat qemu-desktop-bios.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop-bios.log
-          grep -Fq 'KINGAI_DESKTOP_GRAPHICAL_READY' qemu-desktop-bios.log
+          grep -Fq 'KINGAI_DESKTOP_DISPLAY_MANAGER_READY' qemu-desktop-bios.log
           if grep -Eiq "Failed to start casper-md5check|chroot: can't execute|update-notifier/.+No such file|ubuntu-release-upgrader/.+No such file|var/crash/crash.init.+No such file" qemu-desktop-bios.log; then
             echo 'Desktop BIOS live-session compatibility regression detected.' >&2
             exit 1
           fi
-      - name: QEMU Desktop UEFI graphical boot smoke
+      - name: QEMU Desktop UEFI display-manager boot smoke
         shell: bash
         run: |
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
@@ -125,7 +141,7 @@ jobs:
           cat qemu-desktop-uefi.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Fq 'KINGAI OS 0.1 Developer Foundation' qemu-desktop-uefi.log
-          grep -Fq 'KINGAI_DESKTOP_GRAPHICAL_READY' qemu-desktop-uefi.log
+          grep -Fq 'KINGAI_DESKTOP_DISPLAY_MANAGER_READY' qemu-desktop-uefi.log
           if grep -Eiq "Failed to start casper-md5check|chroot: can't execute|update-notifier/.+No such file|ubuntu-release-upgrader/.+No such file|var/crash/crash.init.+No such file" qemu-desktop-uefi.log; then
             echo 'Desktop UEFI live-session compatibility regression detected.' >&2
             exit 1
@@ -135,4 +151,5 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
           bytes=$(stat -c '%s' "$iso")
           echo "Desktop ISO bytes: $bytes"
+          echo 'This smoke verifies graphical.target + SDDM startup; actual Plasma user-session UI is verified by capture-desktop-ui.yml.'
           if (( bytes >= 2147483648 )); then echo 'Release routing: R2 required'; else echo 'Release routing: GitHub eligible'; fi
