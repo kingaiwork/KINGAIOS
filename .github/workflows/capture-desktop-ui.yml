@@ -95,7 +95,7 @@ jobs:
               for settle in $(seq 1 30); do
                 if [ -f "$plasma_cfg" ] \
                   && grep -Fq 'org.kingai.agentcenter' "$plasma_cfg" \
-                  && grep -Fq 'kingai-flow.jpg' "$plasma_cfg"; then
+                  && grep -Fq 'kingai-flow.svg' "$plasma_cfg"; then
                   touch "$marker"
                   exit 0
                 fi
@@ -152,6 +152,17 @@ jobs:
           test -n "$iso"
           chmod +x scripts/capture-desktop-frame.sh
           bash scripts/capture-desktop-frame.sh "$iso" kingai-desktop-real.png
+
+      - name: Upload capture diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kingai-desktop-capture-diagnostics
+          path: |
+            kingai-desktop-real.log
+            kingai-desktop-real.png
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Create capture metadata
         shell: bash
