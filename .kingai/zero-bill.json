@@ -1,0 +1,22 @@
+{
+  "schema": "kingai.repo-zero-bill.v1",
+  "enabled": true,
+  "central_authority": "kingaiwork/KINGAIASE:config/zero-bill-policy.json",
+  "repo": "kingaiwork/KINGAIOS",
+  "role": "os-runtime",
+  "automatic_ci": "vps-self-hosted-only",
+  "legacy_workflows": "retired-in-zero-bill-branch",
+  "github_hosted_runner": "forbidden",
+  "github_actions_artifact_storage": "forbidden",
+  "github_codeql_ghas": "forbidden-as-automatic-dependency",
+  "container_registry_push": "forbidden-automatic",
+  "github_release_upload": "forbidden-automatic",
+  "paid_ai_api": "forbidden",
+  "heavy_builds": ["rootfs", "live-iso", "iot-image", "sentinel-rootfs", "desktop-capture", "vm-smoke"],
+  "heavy_execution_plane": "owned-vps",
+  "vps_paths": {
+    "qa": "/srv/kingai/qa/KINGAIOS",
+    "releases": "/srv/kingai/releases/KINGAIOS"
+  },
+  "release_requires_vm_parity_migration": true
+}
