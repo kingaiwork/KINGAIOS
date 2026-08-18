@@ -233,7 +233,7 @@ jobs:
           skip-setup-trivy: true
 
       - name: Generate GitHub build provenance
-        uses: actions/attest@v4.2.1
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -241,7 +241,7 @@ jobs:
           create-storage-record: false
 
       - name: Attest CycloneDX SBOM
-        uses: actions/attest@v4.2.1
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
