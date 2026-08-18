@@ -126,10 +126,17 @@ func ExecuteStage(opts ExecuteOptions) (ExecuteResult, error) {
 	if err != nil {
 		return ExecuteResult{}, err
 	}
+	activeRoot := rootA
+	if state.ActiveSlot == SlotB {
+		activeRoot = rootB
+	}
 	targetPart := parts[2]
 	targetRoot := rootB
 	if plan.TargetSlot == SlotA {
 		targetPart, targetRoot = parts[1], rootA
+	}
+	if filepath.Clean(activeRoot) == filepath.Clean(targetRoot) {
+		return ExecuteResult{}, errors.New("A/B update target unexpectedly equals active root")
 	}
 	if isMountedElsewhere(targetPart, targetRoot) {
 		return ExecuteResult{}, fmt.Errorf("inactive target slot %s is mounted elsewhere", plan.TargetSlot)
@@ -138,6 +145,7 @@ func ExecuteStage(opts ExecuteOptions) (ExecuteResult, error) {
 	args := []string{
 		"-aHAX", "--numeric-ids", "--delete",
 		"--exclude=/dev/*", "--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/run/*", "--exclude=/tmp/*", "--exclude=/mnt/*", "--exclude=/media/*", "--exclude=/boot/efi/*",
+		"--exclude=/home/*",
 		"--exclude=/etc/fstab", "--exclude=/etc/crypttab", "--exclude=/etc/machine-id", "--exclude=/etc/kingai/state-test.key",
 		"--exclude=/usr/lib/systemd/system/kingai-state-unlock-ci.service", "--exclude=/etc/systemd/system/local-fs-pre.target.wants/kingai-state-unlock-ci.service",
 		"--exclude=/etc/systemd/system/casper-md5check.service", "--exclude=/etc/systemd/system/default.target",
@@ -158,7 +166,7 @@ func ExecuteStage(opts ExecuteOptions) (ExecuteResult, error) {
 	if err != nil {
 		return ExecuteResult{}, err
 	}
-	if err := prepareTargetRuntimePersistence(targetRoot, stateMnt, state.ActiveSlot, aUUID, bUUID); err != nil {
+	if err := prepareTargetRuntimePersistence(targetRoot, activeRoot, stateMnt, state.ActiveSlot, aUUID, bUUID); err != nil {
 		return ExecuteResult{}, fmt.Errorf("prepare encrypted runtime persistence: %w", err)
 	}
 
