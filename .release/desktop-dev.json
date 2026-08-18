@@ -2,6 +2,6 @@
   "profile": "desktop",
   "channel": "dev",
   "requested_at": "2026-08-18",
-  "attempt": 7,
-  "reason": "Publish the correctly routed consumer-installable KINGAI OS Desktop preview after merge-safe profile resolution tests; require Desktop artifact identity, encrypted persistent home, first-user provisioning, A/B user-state continuity, BIOS/UEFI validation and downloadable Release assets"
+  "attempt": 8,
+  "reason": "Publish the first consumer-installable KINGAI OS Desktop preview after correcting the Ubuntu 26.04 Resolute KDE screenshot package from spectacle to kde-spectacle; require Desktop artifact identity, encrypted persistent /home, first-user provisioning, A/B user-state continuity, BIOS/UEFI validation and downloadable Release assets"
 }

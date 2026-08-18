@@ -87,7 +87,7 @@ falkon
 kate
 okular
 ark
-spectacle
+kde-spectacle
 kcalc
 gwenview
 
