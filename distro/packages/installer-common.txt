@@ -3,4 +3,6 @@ parted
 dosfstools
 e2fsprogs
 cryptsetup
+cryptsetup-initramfs
+systemd-cryptsetup
 rsync
