@@ -77,7 +77,7 @@ jobs:
           assert p['SPDXID']=='SPDXRef-DOCUMENT'
           PY
       - name: Upload Sentinel developer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kingai-sentinel-${{ inputs.arch }}-rootfs
           path: |

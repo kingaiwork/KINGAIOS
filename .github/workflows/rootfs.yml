@@ -50,7 +50,7 @@ jobs:
           assert p['SPDXID']=='SPDXRef-DOCUMENT'
           PY
       - name: Upload developer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kingai-${{ inputs.profile }}-${{ inputs.arch }}-rootfs
           path: |

@@ -171,7 +171,7 @@ jobs:
         run: bash scripts/publish-artifact.sh '${{ steps.artifact.outputs.rootfs }}'
 
       - name: Upload workflow evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kingai-sentinel-release-evidence
           path: |
