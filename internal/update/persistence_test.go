@@ -140,6 +140,9 @@ func TestPrepareTargetRuntimePersistenceSkipsMigrationAfterMarker(t *testing.T) 
 }
 
 func TestPreserveDesktopIdentityAcrossABSlot(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root to validate encrypted home ownership")
+	}
 	active := t.TempDir()
 	target := t.TempDir()
 	state := t.TempDir()
