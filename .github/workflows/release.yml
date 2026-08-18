@@ -51,25 +51,12 @@ jobs:
         id: params
         shell: bash
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            changed=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
-            if grep -qx '.release/desktop-beta.json' <<<"$changed"; then
-              profile=desktop; channel=beta
-            elif grep -qx '.release/desktop-dev.json' <<<"$changed"; then
-              profile=desktop; channel=dev
-            elif grep -qx '.release/server-beta.json' <<<"$changed"; then
-              profile=server; channel=beta
-            else
-              profile=server; channel=dev
-            fi
-          else
-            profile='${{ inputs.profile }}'
-            channel='${{ inputs.channel }}'
-            test -n "$profile" || profile=server
-            test -n "$channel" || channel=dev
-          fi
-          echo "profile=$profile" >> "$GITHUB_OUTPUT"
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          bash scripts/resolve-release-params.sh \
+            "$GITHUB_EVENT_NAME" \
+            '${{ inputs.profile }}' \
+            '${{ inputs.channel }}' \
+            '${{ github.event.before }}' \
+            "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - name: Announce observable release run
         shell: bash
         run: |
@@ -89,6 +76,7 @@ jobs:
           bash -n scripts/*.sh desktop/welcome/*.sh
           bash -n distro/overlay/usr/lib/kingai/kingai-configure-desktop-install distro/overlay/usr/lib/kingai/kingai-installer-gui
           bash scripts/test-release-base-version.sh
+          bash scripts/test-resolve-release-params.sh
       - name: Install build and VM tooling
         run: |
           sudo apt-get update

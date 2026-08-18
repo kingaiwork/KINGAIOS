@@ -2,6 +2,6 @@
   "profile": "desktop",
   "channel": "dev",
   "requested_at": "2026-08-18",
-  "attempt": 6,
-  "reason": "Validate through pull-request CI, then merge to trigger the observable first consumer-installable KINGAI OS Desktop preview release with encrypted persistent home, first-user provisioning, A/B user-state continuity, graphical installer, BIOS/UEFI validation and downloadable artifact retention"
+  "attempt": 7,
+  "reason": "Publish the correctly routed consumer-installable KINGAI OS Desktop preview after merge-safe profile resolution tests; require Desktop artifact identity, encrypted persistent home, first-user provisioning, A/B user-state continuity, BIOS/UEFI validation and downloadable Release assets"
 }
