@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TARGET=""
+STATE_KEY=""
+USERNAME=""
+HOSTNAME_VALUE=""
+PASSWORD_FILE=""
+LOCALE_VALUE="en_US.UTF-8"
+TIMEZONE_VALUE="UTC"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: kingai-configure-desktop-install \
+  --target /dev/DEVICE --state-key /path/to/key \
+  --username NAME --hostname NAME --user-password-file /path/to/password \
+  [--locale en_US.UTF-8] [--timezone UTC]
+
+Post-configures both KINGAI Desktop A/B roots and the encrypted STATE volume.
+Passwords and STATE secrets are read from private files and are never accepted
+as command-line values.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target) TARGET="${2:-}"; shift 2 ;;
+    --state-key) STATE_KEY="${2:-}"; shift 2 ;;
+    --username) USERNAME="${2:-}"; shift 2 ;;
+    --hostname) HOSTNAME_VALUE="${2:-}"; shift 2 ;;
+    --user-password-file) PASSWORD_FILE="${2:-}"; shift 2 ;;
+    --locale) LOCALE_VALUE="${2:-}"; shift 2 ;;
+    --timezone) TIMEZONE_VALUE="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+[[ $(id -u) -eq 0 ]] || { echo "desktop post-install configuration requires root" >&2; exit 1; }
+[[ "$TARGET" == /dev/* && -b "$TARGET" ]] || { echo "target must be a block disk" >&2; exit 1; }
+[[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] || { echo "invalid username" >&2; exit 2; }
+[[ "$HOSTNAME_VALUE" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,62}$ && "$HOSTNAME_VALUE" != *..* && "$HOSTNAME_VALUE" != *.-* && "$HOSTNAME_VALUE" != *-. ]] || { echo "invalid hostname" >&2; exit 2; }
+[[ "$LOCALE_VALUE" =~ ^[A-Za-z0-9_.@-]{2,40}$ ]] || { echo "invalid locale" >&2; exit 2; }
+[[ "$TIMEZONE_VALUE" =~ ^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+){0,3}$ ]] || { echo "invalid timezone" >&2; exit 2; }
+[[ -f "$STATE_KEY" && -r "$STATE_KEY" ]] || { echo "STATE key file is unreadable" >&2; exit 1; }
+[[ -f "$PASSWORD_FILE" && -r "$PASSWORD_FILE" ]] || { echo "user password file is unreadable" >&2; exit 1; }
+[[ $(stat -c '%a' "$STATE_KEY") =~ ^[467]00$|^[467]40$ ]] || { echo "STATE key file permissions are too broad" >&2; exit 1; }
+[[ $(stat -c '%a' "$PASSWORD_FILE") =~ ^[467]00$|^[467]40$ ]] || { echo "password file permissions are too broad" >&2; exit 1; }
+
+PASSWORD_VALUE=$(cat "$PASSWORD_FILE")
+(( ${#PASSWORD_VALUE} >= 12 )) || { echo "desktop password must be at least 12 characters" >&2; exit 1; }
+(( ${#PASSWORD_VALUE} <= 256 )) || { echo "desktop password is too long" >&2; exit 1; }
+
+part() {
+  local n="$1"
+  if [[ "$TARGET" =~ [0-9]$ ]]; then printf '%sp%s' "$TARGET" "$n"; else printf '%s%s' "$TARGET" "$n"; fi
+}
+ROOT_A=$(part 2)
+ROOT_B=$(part 3)
+STATE_PART=$(part 4)
+for p in "$ROOT_A" "$ROOT_B" "$STATE_PART"; do [[ -b "$p" ]] || { echo "installed partition missing: $p" >&2; exit 1; }; done
+
+work=$(mktemp -d /run/kingai-desktop-finalize.XXXXXX)
+root_a="$work/root-a"
+root_b="$work/root-b"
+state="$work/state"
+mkdir -p "$root_a" "$root_b" "$state"
+mapper="kingai-desktop-finalize-$$"
+mapper_path="/dev/mapper/$mapper"
+mapper_open=0
+mounted=()
+
+cleanup() {
+  set +e
+  unset PASSWORD_VALUE
+  for ((i=${#mounted[@]}-1; i>=0; i--)); do mountpoint -q "${mounted[$i]}" && umount "${mounted[$i]}"; done
+  (( mapper_open )) && cryptsetup close "$mapper" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT INT TERM
+
+mount "$ROOT_A" "$root_a"; mounted+=("$root_a")
+mount "$ROOT_B" "$root_b"; mounted+=("$root_b")
+cryptsetup open --type luks --key-file "$STATE_KEY" "$STATE_PART" "$mapper"
+mapper_open=1
+mount "$mapper_path" "$state"; mounted+=("$state")
+
+grep -q '^NAME="KINGAI OS"' "$root_a/usr/lib/os-release"
+grep -q '^NAME="KINGAI OS"' "$root_b/usr/lib/os-release"
+[[ -e "$root_a/usr/share/zoneinfo/$TIMEZONE_VALUE" ]] || { echo "timezone is not present in installed system: $TIMEZONE_VALUE" >&2; exit 1; }
+
+# Keep human data outside A/B system slots. The encrypted STATE volume owns /home.
+install -d -m0755 "$state/home"
+
+configure_root() {
+  local root="$1"
+  install -d -m0755 "$root/home" "$root/etc/default"
+
+  printf '%s\n' "$HOSTNAME_VALUE" > "$root/etc/hostname"
+  if [[ -f "$root/etc/hosts" ]]; then
+    grep -vE '^[[:space:]]*127\.0\.1\.1[[:space:]]+' "$root/etc/hosts" > "$root/etc/hosts.kingai.tmp" || true
+  else
+    printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > "$root/etc/hosts.kingai.tmp"
+  fi
+  printf '127.0.1.1 %s\n' "$HOSTNAME_VALUE" >> "$root/etc/hosts.kingai.tmp"
+  mv "$root/etc/hosts.kingai.tmp" "$root/etc/hosts"
+  chmod 0644 "$root/etc/hostname" "$root/etc/hosts"
+
+  printf 'LANG=%s\n' "$LOCALE_VALUE" > "$root/etc/default/locale"
+  chmod 0644 "$root/etc/default/locale"
+  printf '%s\n' "$TIMEZONE_VALUE" > "$root/etc/timezone"
+  ln -sfn "/usr/share/zoneinfo/$TIMEZONE_VALUE" "$root/etc/localtime"
+
+  if chroot "$root" id "$USERNAME" >/dev/null 2>&1; then
+    uid=$(chroot "$root" id -u "$USERNAME")
+    gid=$(chroot "$root" id -g "$USERNAME")
+  else
+    # Reserve UID/GID 1000 for the first human account. Fail instead of silently
+    # creating different identities in A and B system slots.
+    if chroot "$root" getent passwd 1000 >/dev/null 2>&1 || chroot "$root" getent group 1000 >/dev/null 2>&1; then
+      echo "UID/GID 1000 is unexpectedly occupied in the clean Desktop image" >&2
+      exit 1
+    fi
+    chroot "$root" groupadd -g 1000 "$USERNAME"
+    chroot "$root" useradd -M -u 1000 -g 1000 -d "/home/$USERNAME" -s /bin/bash "$USERNAME"
+    uid=1000; gid=1000
+  fi
+
+  for group in sudo audio video plugdev netdev lpadmin; do
+    if chroot "$root" getent group "$group" >/dev/null 2>&1; then
+      chroot "$root" usermod -aG "$group" "$USERNAME"
+    fi
+  done
+  printf '%s:%s\n' "$USERNAME" "$PASSWORD_VALUE" | chroot "$root" chpasswd
+
+  # Password login is local only by default; no SSH service is enabled by this helper.
+  chroot "$root" passwd -u "$USERNAME" >/dev/null 2>&1 || true
+
+  if ! grep -Fq '/var/lib/kingai-state/home /home none bind,' "$root/etc/fstab"; then
+    printf '%s\n' '/var/lib/kingai-state/home /home none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0' >> "$root/etc/fstab"
+  fi
+}
+
+configure_root "$root_a"
+configure_root "$root_b"
+
+uid_a=$(chroot "$root_a" id -u "$USERNAME")
+gid_a=$(chroot "$root_a" id -g "$USERNAME")
+uid_b=$(chroot "$root_b" id -u "$USERNAME")
+gid_b=$(chroot "$root_b" id -g "$USERNAME")
+[[ "$uid_a:$gid_a" == "$uid_b:$gid_b" ]] || { echo "A/B desktop account identity mismatch" >&2; exit 1; }
+
+install -d -m0700 -o "$uid_a" -g "$gid_a" "$state/home/$USERNAME"
+# Seed standard user directories without placing personal files in either system slot.
+for d in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+  install -d -m0700 -o "$uid_a" -g "$gid_a" "$state/home/$USERNAME/$d"
+done
+
+sync
+echo "KINGAI Desktop account and encrypted persistent home configured for $USERNAME on $HOSTNAME_VALUE" >&2
