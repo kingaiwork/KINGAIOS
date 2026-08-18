@@ -32,7 +32,7 @@ jobs:
         run: sudo --preserve-env=PATH bash scripts/build-live-iso.sh "${{ inputs.profile }}" dist
       - name: Normalize ownership
         run: sudo chown -R "$USER:$USER" dist
-      - name: Validate developer image
+      - name: Validate installable preview image
         id: iso
         shell: bash
         run: |
@@ -41,18 +41,22 @@ jobs:
           sha256sum -c "$p.sha256"
           test -s "$p.manifest.json"
           test -s "$p.spdx.json"
-          python3 - "$p.manifest.json" <<'PY'
+          python3 - "$p.manifest.json" '${{ inputs.profile }}' <<'PY'
           import json, sys
           m=json.load(open(sys.argv[1]))
+          profile=sys.argv[2]
           assert m['product']=='KINGAI OS'
-          assert m['stage']=='developer-foundation'
-          assert m['installable'] is False
+          assert m['profile']==profile
+          assert m['stage']=='installable-preview'
+          assert m['installable'] is True
+          assert m['installer']['entrypoint']=='kingai-install'
+          assert m['boot_mode']==['UEFI','BIOS']
           PY
           echo "path=$p" >> "$GITHUB_OUTPUT"
-      - name: Upload developer Live ISO
+      - name: Upload installable Live ISO
         uses: actions/upload-artifact@v4
         with:
-          name: kingai-${{ inputs.profile }}-live-iso
+          name: kingai-${{ inputs.profile }}-installable-live-iso
           path: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.path }}.sha256
