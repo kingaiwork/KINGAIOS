@@ -1,0 +1,7 @@
+{
+  "profile": "desktop",
+  "channel": "dev",
+  "requested_at": "2026-08-18",
+  "attempt": 1,
+  "reason": "Build the first installable KINGAI OS Desktop / personal-PC Developer Preview with Ubuntu 26.04 hardware baseline, Plasma 6, A/B roots, encrypted KINGAI state, BIOS/UEFI verification and Desktop installer CI"
+}
