@@ -30,7 +30,7 @@ permissions:
 jobs:
   desktop-live-iso-install:
     runs-on: ubuntu-24.04
-    timeout-minutes: 95
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -47,8 +47,26 @@ jobs:
             gdisk parted dosfstools e2fsprogs cryptsetup-bin rsync \
             qemu-utils qemu-system-x86 ovmf jq
 
+      - name: Validate installer shell surfaces
+        run: |
+          bash -n scripts/kingai-install-live.sh
+          bash -n distro/overlay/usr/lib/kingai/kingai-configure-desktop-install
+          bash -n distro/overlay/usr/lib/kingai/kingai-installer-gui
+
       - name: Build Desktop root filesystem
         run: sudo --preserve-env=PATH,KINGAI_SKIP_ARCHIVE KINGAI_SKIP_ARCHIVE=1 bash scripts/build-rootfs.sh desktop amd64 dist
+
+      - name: Validate Desktop installer and hardware surface
+        run: |
+          root=dist/rootfs-desktop-amd64
+          sudo test -x "$root/usr/sbin/kingai-install"
+          sudo test -r "$root/usr/lib/kingai/kingai-configure-desktop-install"
+          sudo test -r "$root/usr/lib/kingai/kingai-installer-gui"
+          sudo test -f "$root/usr/share/applications/kingai-installer.desktop"
+          sudo chroot "$root" dpkg-query -W \
+            linux-firmware firmware-sof-signed fwupd bluez pipewire wireplumber \
+            power-profiles-daemon fprintd systemd-cryptsetup cryptsetup-initramfs \
+            kdialog jq falkon kate okular spectacle
 
       - name: Inject installed Desktop boot proof marker
         shell: bash
@@ -58,12 +76,19 @@ jobs:
           #!/bin/sh
           set -eu
           mountpoint -q /var/lib/kingai-state
+          mountpoint -q /home
           test -e /dev/mapper/KINGAI_STATE
+          id kingai >/dev/null
+          test "$(id -u kingai):$(id -g kingai)" = 1000:1000
+          test "$(stat -c '%u:%g' /home/kingai)" = 1000:1000
           systemctl is-active --quiet sddm.service
           test "$(systemctl get-default)" = graphical.target
           test -x /usr/lib/kingai/kingai-welcome
           test -f /usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json
+          test ! -e /usr/share/applications/kingai-installer.desktop
           echo KINGAI_DESKTOP_ENCRYPTED_STATE_OK > /dev/ttyS0
+          echo KINGAI_DESKTOP_ENCRYPTED_HOME_OK > /dev/ttyS0
+          echo KINGAI_DESKTOP_FIRST_USER_OK > /dev/ttyS0
           echo KINGAI_DESKTOP_SDDM_READY > /dev/ttyS0
           echo KINGAI_DESKTOP_INSTALLED_BOOT_OK > /dev/ttyS0
           EOF
@@ -105,12 +130,14 @@ jobs:
           test -x ci/source/usr/sbin/kingai-install
           test -x ci/source/usr/lib/kingai/kingai-installer
           test -x ci/source/usr/lib/kingai/kingai-welcome
+          test -r ci/source/usr/lib/kingai/kingai-configure-desktop-install
+          test -r ci/source/usr/lib/kingai/kingai-installer-gui
           grep -q '^NAME="KINGAI OS"' ci/source/usr/lib/os-release
 
       - name: Create disposable Desktop installation target
         shell: bash
         run: |
-          truncate -s 36G ci/desktop-installer-test.raw
+          truncate -s 48G ci/desktop-installer-test.raw
           sudo modprobe nbd max_part=16
           sudo qemu-nbd --connect=/dev/nbd0 --format=raw ci/desktop-installer-test.raw
           sudo udevadm settle
@@ -118,9 +145,14 @@ jobs:
           head -c 64 /dev/urandom > ci/state.key
           chmod 600 ci/state.key
 
-      - name: Install Desktop through the live ISO entrypoint
+      - name: Install Desktop through the exact Live ISO entrypoint
         shell: bash
         run: |
+          # In a real Live session the configurator is at /usr/lib/kingai. The CI
+          # bypass executes the ISO script from a mounted squashfs on the runner,
+          # so mirror only this helper at its runtime-absolute path.
+          sudo install -d -m0755 /usr/lib/kingai
+          sudo install -m0644 ci/source/usr/lib/kingai/kingai-configure-desktop-install /usr/lib/kingai/kingai-configure-desktop-install
           sudo env \
             KINGAI_INSTALLER_LIVE_CI=1 \
             KINGAI_INSTALLER_CI=1 \
@@ -134,7 +166,7 @@ jobs:
               --confirm ERASE:/dev/nbd0 | tee ci/install-result.json
           jq -e '.active_slot == "A" and .target == "/dev/nbd0" and .profile == "desktop"' ci/install-result.json >/dev/null
 
-      - name: Validate installed A-B Desktop disk
+      - name: Validate installed A-B Desktop disk account and encrypted home
         shell: bash
         run: |
           sudo udevadm settle
@@ -142,20 +174,37 @@ jobs:
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p2)" = KINGAI_ROOT_A
           test "$(sudo blkid -s LABEL -o value /dev/nbd0p3)" = KINGAI_ROOT_B
           sudo cryptsetup isLuks /dev/nbd0p4
-          mkdir -p ci/check-root ci/check-efi
+          mkdir -p ci/check-root ci/check-root-b ci/check-efi ci/check-state
           sudo mount /dev/nbd0p2 ci/check-root
+          sudo mount /dev/nbd0p3 ci/check-root-b
           sudo mount /dev/nbd0p1 ci/check-efi
           grep -q '^NAME="KINGAI OS"' ci/check-root/usr/lib/os-release
           test -x ci/check-root/usr/lib/kingai/kingai-welcome
           test -f ci/check-root/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json
           test "$(readlink ci/check-root/etc/systemd/system/default.target)" = '/usr/lib/systemd/system/graphical.target'
+          grep -Eq '^kingai:x:1000:1000:' ci/check-root/etc/passwd
+          grep -Eq '^kingai:x:1000:1000:' ci/check-root-b/etc/passwd
+          grep -Fq '/var/lib/kingai-state/home /home none bind,' ci/check-root/etc/fstab
+          grep -Fq '/var/lib/kingai-state/home /home none bind,' ci/check-root-b/etc/fstab
+          test ! -e ci/check-root/usr/share/applications/kingai-installer.desktop
+          test ! -e ci/check-root-b/usr/share/applications/kingai-installer.desktop
           test -f ci/check-root/boot/grub/grub.cfg
           grep -q 'menuentry.*Slot A' ci/check-root/boot/grub/grub.cfg
           grep -q 'menuentry.*Slot B' ci/check-root/boot/grub/grub.cfg
           test -f ci/check-efi/EFI/BOOT/BOOTX64.EFI
           test "$(stat -c '%s' ci/check-efi/EFI/BOOT/BOOTX64.EFI)" -ge 65536
           sudo umount ci/check-efi
+          sudo umount ci/check-root-b
           sudo umount ci/check-root
+
+          sudo cryptsetup open --key-file ci/state.key /dev/nbd0p4 kingai-state-check
+          sudo mount /dev/mapper/kingai-state-check ci/check-state
+          sudo test -d ci/check-state/home/kingai
+          test "$(sudo stat -c '%u:%g' ci/check-state/home/kingai)" = 1000:1000
+          sudo test -d ci/check-state/home/kingai/Documents
+          sudo test -d ci/check-state/home/kingai/Downloads
+          sudo umount ci/check-state
+          sudo cryptsetup close kingai-state-check
 
       - name: Unmount live media and disconnect target
         run: |
@@ -164,7 +213,7 @@ jobs:
           sudo qemu-nbd --disconnect /dev/nbd0
           sudo udevadm settle
 
-      - name: UEFI boot installed Desktop and verify SDDM
+      - name: UEFI boot installed Desktop and verify SDDM account and encrypted home
         shell: bash
         run: |
           codefd=/usr/share/OVMF/OVMF_CODE_4M.fd
@@ -184,6 +233,8 @@ jobs:
           cat ci/qemu-installed-desktop.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Fq 'KINGAI_DESKTOP_ENCRYPTED_STATE_OK' ci/qemu-installed-desktop.log
+          grep -Fq 'KINGAI_DESKTOP_ENCRYPTED_HOME_OK' ci/qemu-installed-desktop.log
+          grep -Fq 'KINGAI_DESKTOP_FIRST_USER_OK' ci/qemu-installed-desktop.log
           grep -Fq 'KINGAI_DESKTOP_SDDM_READY' ci/qemu-installed-desktop.log
           grep -Fq 'KINGAI_DESKTOP_INSTALLED_BOOT_OK' ci/qemu-installed-desktop.log
           if grep -Fq 'grub>' ci/qemu-installed-desktop.log; then
@@ -194,6 +245,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          mount | awk '$3 ~ /ci\/(source|media|check-root|check-efi)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          mount | awk '$3 ~ /ci\/(source|media|check-root|check-root-b|check-efi|check-state)$/ {print $3}' | sort -r | xargs -r sudo umount || true
+          sudo cryptsetup close kingai-state-check 2>/dev/null || true
           sudo cryptsetup close KINGAI_STATE 2>/dev/null || true
           sudo qemu-nbd --disconnect /dev/nbd0 2>/dev/null || true
+          sudo rm -f /usr/lib/kingai/kingai-configure-desktop-install
