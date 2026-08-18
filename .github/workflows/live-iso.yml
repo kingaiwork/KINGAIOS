@@ -54,7 +54,7 @@ jobs:
           PY
           echo "path=$p" >> "$GITHUB_OUTPUT"
       - name: Upload installable Live ISO
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kingai-${{ inputs.profile }}-installable-live-iso
           path: |
