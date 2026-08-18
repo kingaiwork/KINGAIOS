@@ -2,6 +2,6 @@
   "profile": "desktop",
   "channel": "dev",
   "requested_at": "2026-08-18",
-  "attempt": 4,
-  "reason": "Build the first consumer-installable KINGAI OS Desktop / personal-PC Developer Preview with Ubuntu 26.04 LTS, Plasma 6, expanded laptop hardware support, graphical safe installer, encrypted persistent /home, first-user provisioning, A/B update preservation for account/password/Wi-Fi/machine identity, BIOS/UEFI verification, exact install-to-disk CI and Desktop A-B upgrade CI"
+  "attempt": 5,
+  "reason": "Build and publish the first observable consumer-installable KINGAI OS Desktop / personal-PC Developer Preview with Ubuntu 26.04 LTS, Plasma 6, expanded laptop hardware support, graphical installer, encrypted persistent /home, first-user provisioning, A/B user-state continuity, BIOS/UEFI validation, install-to-disk CI, Desktop A/B upgrade CI, retained Actions artifact and release run status reporting"
 }
