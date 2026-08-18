@@ -1,0 +1,80 @@
+name: KINGAI OS Desktop Package Resolution
+
+on:
+  pull_request:
+    paths:
+      - 'distro/packages/desktop.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/packages/installer-amd64.txt'
+      - '.github/workflows/desktop-package-resolution.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'distro/packages/desktop.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/packages/installer-amd64.txt'
+      - '.github/workflows/desktop-package-resolution.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolute-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate package-list syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in distro/packages/desktop.txt distro/packages/installer-common.txt distro/packages/installer-amd64.txt; do
+            test -s "$file"
+            if grep -Ev '^[[:space:]]*($|#|[a-z0-9][a-z0-9+.-]*(:[a-z0-9]+)?)$' "$file"; then
+              echo "Invalid package-list line in $file" >&2
+              exit 1
+            fi
+          done
+          grep -qx 'kde-spectacle' distro/packages/desktop.txt
+          if grep -qx 'spectacle' distro/packages/desktop.txt; then
+            echo 'Ubuntu 26.04 uses kde-spectacle, not spectacle.' >&2
+            exit 1
+          fi
+      - name: Resolve complete Desktop package set against Ubuntu 26.04
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=$(cat \
+            distro/packages/desktop.txt \
+            distro/packages/installer-common.txt \
+            distro/packages/installer-amd64.txt \
+            | sed -E 's/[[:space:]]*#.*$//' \
+            | awk 'NF' \
+            | sort -u \
+            | tr '\n' ' ')
+          docker run --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            ubuntu:26.04 \
+            bash -euc "
+              printf 'deb http://archive.ubuntu.com/ubuntu resolute main restricted universe multiverse\\n' > /etc/apt/sources.list
+              printf 'deb http://archive.ubuntu.com/ubuntu resolute-updates main restricted universe multiverse\\n' >> /etc/apt/sources.list
+              printf 'deb http://security.ubuntu.com/ubuntu resolute-security main restricted universe multiverse\\n' >> /etc/apt/sources.list
+              rm -f /etc/apt/sources.list.d/ubuntu.sources
+              apt-get update
+              apt-get --simulate --no-install-recommends install $packages
+            "
+      - name: Confirm critical personal-PC packages
+        shell: bash
+        run: |
+          for pkg in \
+            plasma-desktop plasma-session-wayland sddm \
+            linux-generic linux-firmware firmware-sof-signed \
+            fwupd fwupd-signed network-manager bluez pipewire wireplumber \
+            power-profiles-daemon fprintd kde-spectacle falkon okular \
+            cryptsetup-initramfs systemd-cryptsetup grub-efi-amd64-signed; do
+            grep -qx "$pkg" <(cat distro/packages/desktop.txt distro/packages/installer-common.txt distro/packages/installer-amd64.txt) || {
+              echo "Critical Desktop package missing from profile: $pkg" >&2
+              exit 1
+            }
+          done
