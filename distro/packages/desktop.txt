@@ -14,6 +14,7 @@ console-setup
 apport
 update-notifier-common
 ubuntu-release-upgrader-core
+ubuntu-drivers-common
 libglib2.0-bin
 network-manager
 plasma-desktop
@@ -30,6 +31,8 @@ qml6-module-qtcore
 qml6-module-qtquick-controls
 qml6-module-qtquick-layouts
 qdbus-qt6
+kdialog
+jq
 zstd
 linux-generic
 linux-firmware
@@ -60,6 +63,11 @@ mesa-vulkan-drivers
 mesa-utils
 vulkan-tools
 xserver-xorg-input-libinput
+pciutils
+usbutils
+rfkill
+wireless-regdb
+ethtool
 
 # Desktop integration and portals
 xdg-desktop-portal
@@ -73,6 +81,15 @@ kde-config-sddm
 kde-config-updates
 breeze
 breeze-cursor-theme
+
+# Core everyday applications for the first personal-computer edition
+falkon
+kate
+okular
+ark
+spectacle
+kcalc
+gwenview
 
 # Broad language/font coverage for a commercial desktop
 fonts-noto-core
