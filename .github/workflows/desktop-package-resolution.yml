@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           for file in distro/packages/desktop.txt distro/packages/installer-common.txt distro/packages/installer-amd64.txt; do
             test -s "$file"
-            if grep -Ev '^[[:space:]]*($|#|[a-z0-9][a-z0-9+.-]*(:[a-z0-9]+)?)$' "$file"; then
+            if grep -Ev '^[[:space:]]*($|#.*|[a-z0-9][a-z0-9+.-]*(:[a-z0-9]+)?)$' "$file"; then
               echo "Invalid package-list line in $file" >&2
               exit 1
             fi
