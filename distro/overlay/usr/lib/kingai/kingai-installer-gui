@@ -7,14 +7,19 @@ if ! grep -Eq '(^| )boot=casper( |$)' /proc/cmdline; then
   kdialog --title "$TITLE" --error "The installer can only run from a KINGAI OS Live USB session."
   exit 1
 fi
-for tool in kdialog jq lsblk numfmt sudo; do
+for tool in kdialog jq lsblk numfmt sudo timedatectl; do
   command -v "$tool" >/dev/null || { kdialog --title "$TITLE" --error "Required installer component is missing: $tool"; exit 1; }
 done
+[[ -x /usr/sbin/kingai-install ]] || { kdialog --title "$TITLE" --error "KINGAI install runtime is missing."; exit 1; }
+if ! sudo -n true 2>/dev/null; then
+  kdialog --title "$TITLE" --error "The Live session does not have the expected passwordless installer privilege. Installation is blocked rather than requesting credentials through an unsafe path."
+  exit 1
+fi
 
 kdialog --title "$TITLE" --yesno \
   "Install KINGAI OS Desktop on this PC?\n\nYou can continue using the Live system without installing. The selected internal disk will be completely erased only after a final confirmation." || exit 0
 
-json=$(kingai-install --list)
+json=$(/usr/sbin/kingai-install --list)
 mapfile -t disks < <(jq -r '
   def hasmount:
     (((.mountpoints // []) | any(. != null and . != ""))) or
@@ -54,7 +59,7 @@ done
 
 while :; do
   hostname_value=$(kdialog --title "$TITLE" --inputbox "Computer name:" "kingai-pc") || exit 0
-  if [[ "$hostname_value" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$ && "$hostname_value" != *..* ]]; then break; fi
+  if [[ "$hostname_value" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$ && "$hostname_value" != *..* && "$hostname_value" != *.-* && "$hostname_value" != *-. ]]; then break; fi
   kdialog --title "$TITLE" --sorry "Enter a valid computer name such as kingai-pc."
 done
 
@@ -83,8 +88,8 @@ timezone_value=$(timedatectl show -p Timezone --value 2>/dev/null || true)
 warning="This is the final destructive step.\n\nDisk: $target\nDevice: $selected\nUser: $username\nComputer: $hostname_value\nEncrypted personal data: enabled\nA/B system rollback: enabled\n\nALL existing partitions and files on $target will be permanently erased."
 kdialog --title "$TITLE" --warningyesno "$warning" || exit 0
 
-runtime_dir=$(mktemp -d /tmp/kingai-gui-install.XXXXXX)
 umask 077
+runtime_dir=$(mktemp -d /tmp/kingai-gui-install.XXXXXX)
 state_key="$runtime_dir/state.key"
 password_file="$runtime_dir/user.password"
 log_file="$runtime_dir/install.log"
@@ -103,7 +108,7 @@ trap cleanup EXIT INT TERM
 
 kdialog --title "$TITLE" --passivepopup "Installing KINGAI OS. Do not power off this PC." 8 || true
 set +e
-sudo /usr/sbin/kingai-install \
+sudo -n /usr/sbin/kingai-install \
   --target "$target" \
   --profile desktop \
   --state-key "$state_key" \
@@ -123,8 +128,8 @@ if (( code != 0 )); then
 fi
 
 rm -f "$state_key" "$password_file"
-kdialog --title "$TITLE" --yesno \
-  "KINGAI OS was installed successfully.\n\nRemove the Live USB when the PC restarts. Restart now?"
-if [[ $? -eq 0 ]]; then
-  sudo systemctl reboot
+if kdialog --title "$TITLE" --yesno \
+  "KINGAI OS was installed successfully.\n\nRemove the Live USB when the PC restarts. Restart now?"; then
+  sudo -n systemctl reboot
 fi
+exit 0
