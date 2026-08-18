@@ -8,7 +8,12 @@ on:
       - 'internal/desktop/**'
       - 'internal/statuspub/**'
       - 'cmd/kingaid/**'
+      - 'cmd/kingai-installer/**'
+      - 'internal/installer/**'
+      - 'scripts/kingai-install-live.sh'
       - 'distro/packages/desktop.txt'
+      - 'distro/packages/installer-common.txt'
+      - 'distro/packages/installer-amd64.txt'
       - 'distro/overlay/**'
       - 'scripts/build-rootfs.sh'
       - 'scripts/build-live-iso.sh'
@@ -41,6 +46,8 @@ jobs:
           set -euo pipefail
           root=dist/rootfs-desktop-amd64
           sudo test -x "$root/usr/lib/kingai/kingai-welcome"
+          sudo test -x "$root/usr/sbin/kingai-install"
+          sudo test -x "$root/usr/lib/kingai/kingai-installer"
           sudo test -f "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/metadata.json"
           sudo test ! -e "$root/usr/share/plasma/plasmoids/org.kingai.agentcenter/manifest.json"
           sudo test -f "$root/usr/share/kingai/desktop/layouts/kingai-intelligence.js"
@@ -51,7 +58,8 @@ jobs:
           sudo chroot "$root" dpkg-query -W \
             plasma-desktop plasma-workspace plasma-session-wayland kwin-wayland sddm qdbus-qt6 \
             ubuntu-minimal apt console-setup apport update-notifier-common \
-            ubuntu-release-upgrader-core libglib2.0-bin
+            ubuntu-release-upgrader-core libglib2.0-bin linux-firmware fwupd \
+            network-manager bluez pipewire wireplumber power-profiles-daemon upower udisks2
           if sudo chroot "$root" sh -c 'command -v kpackagetool6 >/dev/null'; then
             sudo chroot "$root" kpackagetool6 --type Plasma/Applet --list | grep -Fq 'org.kingai.agentcenter'
           fi
@@ -101,7 +109,9 @@ jobs:
           sbom=json.load(open(sys.argv[2]))
           assert manifest['product']=='KINGAI OS'
           assert manifest['profile']=='desktop'
-          assert manifest['installable'] is False
+          assert manifest['installable'] is True
+          assert manifest['stage']=='installable-preview'
+          assert manifest['installer']['entrypoint']=='kingai-install'
           assert manifest['boot_mode']==['UEFI','BIOS']
           assert sbom['spdxVersion']=='SPDX-2.3'
           PY
@@ -151,5 +161,5 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'KINGAI-OS-Desktop-*.iso' -print -quit)
           bytes=$(stat -c '%s' "$iso")
           echo "Desktop ISO bytes: $bytes"
-          echo 'This smoke verifies graphical.target + SDDM startup; actual Plasma user-session UI is verified by capture-desktop-ui.yml.'
+          echo 'This smoke verifies installable metadata, graphical.target + SDDM startup; exact disk installation is verified by the installable Desktop workflow.'
           if (( bytes >= 2147483648 )); then echo 'Release routing: R2 required'; else echo 'Release routing: GitHub eligible'; fi
