@@ -41,6 +41,9 @@ if [[ "$PROFILE" == "recovery" ]]; then
 elif [[ "$PROFILE" == "server" ]]; then
   MENU="Try / Install KINGAI OS Server"
   EXTRA="quiet splash"
+elif [[ "$PROFILE" == "desktop" ]]; then
+  MENU="Try / Install KINGAI OS Desktop"
+  EXTRA="quiet splash"
 elif [[ "$PROFILE" == "sentinel" ]]; then
   MENU="Try / Install KINGAI OS Sentinel"
   EXTRA="quiet splash"
@@ -72,7 +75,7 @@ import hashlib, json, os, sys
 path, profile, version, source_version, channel, size, sbom_sha = sys.argv[1:]
 with open(path, "rb") as f:
     sha = hashlib.file_digest(f, "sha256").hexdigest()
-installable = profile in {"server", "sentinel"}
+installable = profile in {"server", "desktop", "sentinel"}
 stage = "installable-preview" if installable else "developer-foundation"
 manifest = {
     "product": "KINGAI OS",
@@ -106,7 +109,7 @@ PY
 echo "Built $ISO ($(numfmt --to=iec "$SIZE"))"
 if [[ "$PROFILE" == "recovery" ]]; then
   echo "Offline Recovery ISO: no SSH service, no automatic agent/update daemon."
-elif [[ "$PROFILE" == "server" || "$PROFILE" == "sentinel" ]]; then
+elif [[ "$PROFILE" == "server" || "$PROFILE" == "desktop" || "$PROFILE" == "sentinel" ]]; then
   echo "Installable ${PROFILE^} Preview: use sudo kingai-install from the live session; Beta/Stable release gates remain enforced."
 else
   echo "Developer Live ISO: production release gates remain enforced."
