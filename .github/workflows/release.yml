@@ -20,6 +20,8 @@ on:
     paths:
       - '.release/server-dev.json'
       - '.release/server-beta.json'
+      - '.release/desktop-dev.json'
+      - '.release/desktop-beta.json'
 
 permissions:
   contents: write
@@ -49,9 +51,16 @@ jobs:
         shell: bash
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            profile=server
             changed=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
-            if grep -qx '.release/server-beta.json' <<<"$changed"; then channel=beta; else channel=dev; fi
+            if grep -qx '.release/desktop-beta.json' <<<"$changed"; then
+              profile=desktop; channel=beta
+            elif grep -qx '.release/desktop-dev.json' <<<"$changed"; then
+              profile=desktop; channel=dev
+            elif grep -qx '.release/server-beta.json' <<<"$changed"; then
+              profile=server; channel=beta
+            else
+              profile=server; channel=dev
+            fi
           else
             profile='${{ inputs.profile }}'
             channel='${{ inputs.channel }}'
@@ -91,10 +100,14 @@ jobs:
         shell: bash
         run: |
           channel='${{ steps.params.outputs.channel }}'
+          profile='${{ steps.params.outputs.profile }}'
           iso=$(find dist -maxdepth 1 -name '*.iso' -print -quit); test -s "$iso"; sha256sum -c "$iso.sha256"
           manifest="$iso.manifest.json"; sbom="$iso.spdx.json"; test -s "$sbom"
           jq -e '.spdxVersion == "SPDX-2.3" and .SPDXID == "SPDXRef-DOCUMENT"' "$sbom" >/dev/null
-          jq -e --arg channel "$channel" '.product == "KINGAI OS" and .sbom.format == "SPDX-2.3" and .release_channel == $channel' "$manifest" >/dev/null
+          jq -e --arg channel "$channel" --arg profile "$profile" '.product == "KINGAI OS" and .profile == $profile and .sbom.format == "SPDX-2.3" and .release_channel == $channel' "$manifest" >/dev/null
+          if [[ "$profile" == desktop ]]; then
+            jq -e '.installable == true and .stage == "installable-preview" and .installer.entrypoint == "kingai-install"' "$manifest" >/dev/null
+          fi
           test "$(jq -r '.sbom.sha256' "$manifest")" = "$(sha256sum "$sbom" | awk '{print $1}')"
           case "$channel" in
             beta|rc) [[ "$(basename "$iso")" == *"-${channel}-amd64.iso" ]] || { echo "artifact filename does not encode ${channel} channel" >&2; exit 1; } ;;
@@ -166,6 +179,7 @@ jobs:
           - Source commit: ${GITHUB_SHA}
           - BIOS and UEFI Live boot: verified in this workflow
           - Exact Live ISO installation path: required for Beta and above
+          - Desktop Developer Preview: installable when profile=desktop, with A/B roots and encrypted KINGAI state
           - SPDX 2.3 SBOM: included
           - A/B, installer, Recovery and TUF gates: enforced by channel policy and commit-aware evidence freshness
           - Production signing secrets: never embedded in source
