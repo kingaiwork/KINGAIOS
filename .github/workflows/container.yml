@@ -78,7 +78,7 @@ jobs:
       - name: Validate release policy
         run: bash scripts/test-container-release-policy.sh
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Run hardened runtime and persistence smoke
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build architecture-specific scan image
@@ -130,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build and validate amd64/arm64 OCI archive
