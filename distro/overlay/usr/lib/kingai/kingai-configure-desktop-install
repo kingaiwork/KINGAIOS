@@ -36,16 +36,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+private_file() {
+  local p="$1" label="$2" mode
+  [[ -f "$p" && -r "$p" ]] || { echo "$label file is unreadable" >&2; return 1; }
+  mode=$(stat -c '%a' "$p")
+  # Secrets must be owner-only. Reject 0640/0644 and other group/other access.
+  (( (8#$mode & 077) == 0 )) || { echo "$label file permissions are too broad" >&2; return 1; }
+}
+
 [[ $(id -u) -eq 0 ]] || { echo "desktop post-install configuration requires root" >&2; exit 1; }
 [[ "$TARGET" == /dev/* && -b "$TARGET" ]] || { echo "target must be a block disk" >&2; exit 1; }
 [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] || { echo "invalid username" >&2; exit 2; }
 [[ "$HOSTNAME_VALUE" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{0,62}$ && "$HOSTNAME_VALUE" != *..* && "$HOSTNAME_VALUE" != *.-* && "$HOSTNAME_VALUE" != *-. ]] || { echo "invalid hostname" >&2; exit 2; }
 [[ "$LOCALE_VALUE" =~ ^[A-Za-z0-9_.@-]{2,40}$ ]] || { echo "invalid locale" >&2; exit 2; }
 [[ "$TIMEZONE_VALUE" =~ ^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+){0,3}$ ]] || { echo "invalid timezone" >&2; exit 2; }
-[[ -f "$STATE_KEY" && -r "$STATE_KEY" ]] || { echo "STATE key file is unreadable" >&2; exit 1; }
-[[ -f "$PASSWORD_FILE" && -r "$PASSWORD_FILE" ]] || { echo "user password file is unreadable" >&2; exit 1; }
-[[ $(stat -c '%a' "$STATE_KEY") =~ ^[467]00$|^[467]40$ ]] || { echo "STATE key file permissions are too broad" >&2; exit 1; }
-[[ $(stat -c '%a' "$PASSWORD_FILE") =~ ^[467]00$|^[467]40$ ]] || { echo "password file permissions are too broad" >&2; exit 1; }
+private_file "$STATE_KEY" "STATE key"
+private_file "$PASSWORD_FILE" "user password"
 
 PASSWORD_VALUE=$(cat "$PASSWORD_FILE")
 (( ${#PASSWORD_VALUE} >= 12 )) || { echo "desktop password must be at least 12 characters" >&2; exit 1; }
@@ -93,7 +99,7 @@ grep -q '^NAME="KINGAI OS"' "$root_b/usr/lib/os-release"
 install -d -m0755 "$state/home"
 
 configure_root() {
-  local root="$1"
+  local root="$1" uid gid
   install -d -m0755 "$root/home" "$root/etc/default"
 
   printf '%s\n' "$HOSTNAME_VALUE" > "$root/etc/hostname"
@@ -133,12 +139,12 @@ configure_root() {
   done
   printf '%s:%s\n' "$USERNAME" "$PASSWORD_VALUE" | chroot "$root" chpasswd
 
-  # Password login is local only by default; no SSH service is enabled by this helper.
-  chroot "$root" passwd -u "$USERNAME" >/dev/null 2>&1 || true
-
   if ! grep -Fq '/var/lib/kingai-state/home /home none bind,' "$root/etc/fstab"; then
     printf '%s\n' '/var/lib/kingai-state/home /home none bind,x-systemd.requires-mounts-for=/var/lib/kingai-state 0 0' >> "$root/etc/fstab"
   fi
+
+  # Installer launchers belong to the Live medium, not the installed desktop.
+  rm -f "$root/usr/share/applications/kingai-installer.desktop"
 }
 
 configure_root "$root_a"
