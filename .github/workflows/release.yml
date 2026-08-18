@@ -132,10 +132,14 @@ jobs:
         shell: bash
         run: |
           channel='${{ steps.params.outputs.channel }}'
+          profile='${{ steps.params.outputs.profile }}'
           manifest='${{ steps.artifact.outputs.manifest }}'
           if [[ "$channel" == beta || "$channel" == rc || "$channel" == stable ]]; then
             test -f release/gates.json || { echo 'non-dev release requires release/gates.json' >&2; exit 1; }
             jq -e '.installer_vm==true and .installable_live_iso_vm==true and .ab_update_vm==true and .recovery_vm==true and .tuf_client==true' release/gates.json >/dev/null || { echo 'Beta functional gate incomplete' >&2; exit 1; }
+            if [[ "$profile" == desktop ]]; then
+              jq -e '.desktop_live_vm==true and .desktop_install_vm==true and .desktop_ab_update_vm==true' release/gates.json >/dev/null || { echo 'Desktop Beta functional/user-state gate incomplete' >&2; exit 1; }
+            fi
             jq -e '.installable==true and (.stage != "developer-foundation")' "$manifest" >/dev/null || { echo 'Beta/RC/Stable publishing requires a non-developer installable artifact; current Live ISO is not eligible.' >&2; exit 1; }
           fi
           if [[ "$channel" == rc || "$channel" == stable ]]; then
