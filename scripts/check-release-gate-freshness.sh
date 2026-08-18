@@ -3,8 +3,8 @@ set -euo pipefail
 
 channel="${1:-}"
 profile="${2:-server}"
-case "$channel" in dev|beta|rc|stable) ;; *) echo "usage: $0 <dev|beta|rc|stable> <server|desktop>" >&2; exit 2;; esac
-case "$profile" in server|desktop) ;; *) echo "invalid profile: $profile" >&2; exit 2;; esac
+case "$channel" in dev|beta|rc|stable) ;; *) echo "usage: $0 <dev|beta|rc|stable> <server|desktop|iot>" >&2; exit 2;; esac
+case "$profile" in server|desktop|iot) ;; *) echo "invalid profile: $profile" >&2; exit 2;; esac
 
 [[ "$channel" == dev ]] && { echo 'Developer channel: freshness gates are advisory only.'; exit 0; }
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
@@ -36,13 +36,22 @@ require_fresh() {
   echo "${gate}: fresh (${workflow} @ ${sha})"
 }
 
-# Every non-dev release first requires fresh cross-component regression and
-# reachable known-vulnerability evidence. Deliberately exclude .release request
-# markers so a release request can follow the evidence without invalidating it.
+# Every non-dev release requires fresh cross-component regression and known-
+# vulnerability evidence. Release request marker files are intentionally not
+# part of the freshness regex so they can follow validated evidence.
 require_fresh stability-security 'stability-security-crosscheck.yml' \
   '^(cmd/|internal/|configs/|container/|systemd/|scripts/|release/|\.github/workflows/|go\.(mod|sum)$)'
 require_fresh go-vulnerability 'govulncheck.yml' \
   '^(cmd/|internal/|go\.(mod|sum)$|\.github/workflows/govulncheck\.yml$)'
+
+if [[ "$profile" == iot ]]; then
+  require_fresh iot-edge 'smoke-iot.yml' \
+    '^(cmd/kingaid/|cmd/kingai-update/|internal/(agent|deviceidentity|devicepack|executor|policy|scheduler|taskgraph|update)/|sdk/edgehandler/|iot/|profiles/iot\.yaml$|systemd/kingaid(-iot)?\.conf$|systemd/kingaid\.service$|tmpfiles/|distro/packages/iot\.txt$|distro/overlay/|scripts/build-(rootfs|iot-image)\.sh$|tools/(ci/validate-device-pack-template|device-pack-release)/|go\.(mod|sum)$)'
+  require_fresh iot-foundation 'ci.yml' \
+    '^(cmd/kingaid/|cmd/kingai-update/|internal/(deviceidentity|devicepack|policy|update)/|sdk/edgehandler/|iot/|profiles/iot\.yaml$|release/gates\.json$|go\.(mod|sum)$)'
+  echo "Release evidence freshness passed for iot/${channel}. Hardware support claims remain separately gated by iot/support-matrix.json and HIL evidence."
+  exit 0
+fi
 
 if [[ "$profile" == desktop ]]; then
   require_fresh installer 'smoke-installer-desktop-vm.yml' \
@@ -54,13 +63,14 @@ else
     '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs|build-live-iso)\.sh$|distro/packages/(server|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$)'
 fi
 
-# Production installations do not persist the CI STATE key. Require a real
-# systemd/cryptsetup console passphrase unlock proof for every non-dev profile.
+# Production installs do not persist the CI STATE key. Require a real
+# systemd/cryptsetup console passphrase unlock proof for non-IoT installable
+# profiles before release.
 require_fresh state-passphrase-unlock 'smoke-state-passphrase-unlock-vm.yml' \
   '^(cmd/kingai-installer/|internal/installer/|scripts/(kingai-install-live|build-rootfs)\.sh$|distro/packages/(server|desktop|installer-[^/]+)\.txt$|distro/overlay/|systemd/|go\.(mod|sum)$|\.github/workflows/smoke-state-passphrase-unlock-vm\.yml$)'
 
-# Runtime state is shared across profiles and must remain encrypted, persistent
-# across A/B slots, and safely migratable from the pre-layout Beta installations.
+# Runtime state must remain encrypted, persistent across A/B slots, and safely
+# migratable from pre-layout installations.
 require_fresh runtime-persistence 'smoke-runtime-persistence-migration-vm.yml' \
   '^(cmd/kingai-update/|cmd/kingai-installer/|internal/update/|internal/installer/|systemd/(kingaid|kingai-update-health)\.service$|scripts/build-rootfs\.sh$|distro/packages/(server|desktop|installer-[^/]+)\.txt$|distro/overlay/|go\.(mod|sum)$|\.github/workflows/smoke-runtime-persistence-migration-vm\.yml$)'
 

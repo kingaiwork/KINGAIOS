@@ -14,16 +14,20 @@ import (
 )
 
 type Manifest struct {
-	Schema    int    `json:"schema"`
-	Product   string `json:"product"`
-	Version   string `json:"version"`
-	Channel   string `json:"channel"`
-	Profile   string `json:"profile"`
-	Arch      string `json:"arch"`
-	Artifact  string `json:"artifact"`
-	URL       string `json:"url"`
-	SHA256    string `json:"sha256"`
-	SizeBytes int64  `json:"size_bytes"`
+	Schema              int      `json:"schema"`
+	Product             string   `json:"product"`
+	Version             string   `json:"version"`
+	Channel             string   `json:"channel"`
+	Profile             string   `json:"profile"`
+	Arch                string   `json:"arch"`
+	Artifact            string   `json:"artifact"`
+	URL                 string   `json:"url"`
+	SHA256              string   `json:"sha256"`
+	SizeBytes           int64    `json:"size_bytes"`
+	BoardIDs            []string `json:"board_ids,omitempty"`
+	DeviceClasses       []string `json:"device_classes,omitempty"`
+	RequiredDevicePacks []string `json:"required_device_packs,omitempty"`
+	AttestationModes    []string `json:"attestation_modes,omitempty"`
 }
 
 type Envelope struct {
@@ -35,6 +39,7 @@ type Envelope struct {
 func VerifyEnvelope(e Envelope, pub ed25519.PublicKey) error {
 	if e.Manifest.Schema != 1 { return fmt.Errorf("unsupported manifest schema: %d", e.Manifest.Schema) }
 	if e.Manifest.Product != "KINGAI OS" { return errors.New("unexpected update product") }
+	if err := validateTargetConstraints(e.Manifest); err != nil { return fmt.Errorf("invalid update targeting: %w", err) }
 	if len(pub) != ed25519.PublicKeySize { return errors.New("invalid update public key") }
 	sig, err := base64.StdEncoding.DecodeString(e.Signature)
 	if err != nil { return fmt.Errorf("decode signature: %w", err) }

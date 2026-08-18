@@ -7,6 +7,7 @@ on:
       - .release/container-beta.json
       - .release/container-rc.json
       - release/gates.json
+      - release/container-beta-*.json
       - container/**
       - profiles/container.yaml
       - scripts/test-container-release-policy.sh
@@ -55,14 +56,20 @@ jobs:
           bash -n scripts/*.sh
           bash scripts/test-container-release-policy.sh
           python3 -m py_compile scripts/validate-oci-archive.py
-      - name: Confirm release remains fail-closed before publication
+      - name: Confirm release lifecycle remains fail-closed
         run: |
           python3 - <<'PY'
           import json
+          from pathlib import Path
+
           gates = json.load(open('release/gates.json', encoding='utf-8'))
           assert gates['container_release_pipeline'] is True
-          assert gates['container_signed_release'] is False
+          assert isinstance(gates['container_signed_release'], bool)
           assert gates['production_signing_ready'] is False
+          if gates['container_signed_release'] is True:
+              request = json.load(open('.release/container-beta.json', encoding='utf-8'))
+              evidence = Path('release') / f"container-beta-{request['version']}.json"
+              assert evidence.is_file(), f'missing durable signed-release evidence: {evidence}'
           PY
 
   release:

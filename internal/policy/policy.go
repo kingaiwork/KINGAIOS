@@ -86,7 +86,7 @@ func (p Policy) Evaluate(r Request) Result {
 	if r.Capability == "" {
 		return Result{Reason: "capability is required"}
 	}
-	rule, ok := p.Rules[r.Capability]
+	rule, ok := effectiveRule(p.Rules, r.Capability)
 	if !ok {
 		return Result{Reason: "unknown capability: default deny"}
 	}

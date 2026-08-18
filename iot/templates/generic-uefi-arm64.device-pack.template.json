@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "id": "kingai.generic-uefi-arm64",
+  "name": "KINGAI Generic UEFI ARM64",
+  "version": "0.1.0-template",
+  "arch": "arm64",
+  "vendor": "KINGAI",
+  "board_ids": ["generic-uefi-arm64"],
+  "boot": {"method":"uefi","firmware_required":false,"dtb_required":true,"secure_boot_capable":true},
+  "artifacts": [
+    {"name":"kernel.bin","kind":"kernel","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0},
+    {"name":"initrd.img","kind":"initrd","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0},
+    {"name":"board.dtb","kind":"dtb","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0}
+  ],
+  "capabilities": [
+    {"id":"device.telemetry.read","handler":"telemetry-read","operation":"read","risk":"L0","approval_required":false,"resources":["sensor:board"]},
+    {"id":"device.power.control","handler":"power-control","operation":"control","risk":"L4","approval_required":true,"resources":["power:system"]}
+  ],
+  "security": {"signed_manifest":false,"redistribution_reviewed":false,"notes":"INTEGRATION TEMPLATE ONLY. Replace DTB/kernel artifacts and hashes for the exact target, sign, then run HIL gates."}
+}

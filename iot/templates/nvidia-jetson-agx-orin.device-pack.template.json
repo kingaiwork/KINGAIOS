@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "id": "kingai.nvidia-jetson-agx-orin",
+  "name": "KINGAI NVIDIA Jetson AGX Orin Integration Template",
+  "version": "0.1.0-template",
+  "arch": "arm64",
+  "vendor": "NVIDIA",
+  "board_ids": ["nvidia-jetson-agx-orin"],
+  "boot": {"method":"vendor","firmware_required":true,"dtb_required":true,"secure_boot_capable":false},
+  "artifacts": [
+    {"name":"vendor-driver.bin","kind":"driver","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0,"license":"REVIEW_REQUIRED","source":"REPLACE_WITH_VENDOR_SOURCE"},
+    {"name":"board.dtb","kind":"dtb","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size_bytes":0}
+  ],
+  "capabilities": [
+    {"id":"device.telemetry.read","handler":"telemetry-read","operation":"read","risk":"L0","approval_required":false,"resources":["sensor:board"]},
+    {"id":"device.camera.capture","handler":"camera-capture","operation":"read","risk":"L1","approval_required":false,"resources":["camera:declared"]},
+    {"id":"device.gpu.compute","handler":"gpu-compute","operation":"compute","risk":"L1","approval_required":false,"resources":["gpu:0"]},
+    {"id":"device.npu.compute","handler":"npu-compute","operation":"compute","risk":"L1","approval_required":false,"resources":["npu:0"]},
+    {"id":"device.power.control","handler":"power-control","operation":"control","risk":"L4","approval_required":true,"resources":["power:system"]}
+  ],
+  "security": {"signed_manifest":false,"redistribution_reviewed":false,"notes":"INTEGRATION TEMPLATE ONLY; vendor BSP/driver compatibility and redistribution require separate review and HIL validation."}
+}

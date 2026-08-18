@@ -8,7 +8,7 @@
     {
       "id": "system-ops",
       "role": "system-operations",
-      "capabilities": ["filesystem.read", "network.read", "process.execute", "service.restart", "package.install", "network.modify", "boot.modify"]
+      "capabilities": ["filesystem.read", "network.read", "process.execute", "service.restart", "package.install", "network.modify", "boot.modify", "device.*"]
     },
     {
       "id": "sec-ops",
@@ -16,5 +16,5 @@
       "capabilities": ["filesystem.read", "network.read", "audit.read", "security.modify", "network.modify"]
     }
   ],
-  "rule": "Agent manifests never override the central policy engine. Privileged identities are bound to trusted local service accounts or root and higher-risk capabilities still require policy approval."
+  "rule": "Agent manifests never override the central policy engine. device.* only makes system-ops eligible for exact Device Pack capabilities that are loaded into Policy at runtime; privileged identities remain locally bound and higher-risk capabilities still require policy approval."
 }

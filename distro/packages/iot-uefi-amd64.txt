@@ -1,0 +1,5 @@
+linux-generic
+initramfs-tools
+cryptsetup
+util-linux
+grub2-common

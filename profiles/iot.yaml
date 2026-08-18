@@ -12,12 +12,29 @@ features:
   governed_runtime: true
   local_ai_runtime: optional
   generic_privileged_execd: false
+  embedded_device_broker: true
+  device_handler_transport: unix_socket
+  generic_root_shell: false
   device_packs: true
+  device_pack_schema: v2
+  device_pack_detached_signatures: ed25519
+  device_pack_artifact_integrity: sha256
+  device_pack_lifecycle_admin: root_only
+  device_pack_atomic_activation: true
+  device_pack_upgrade_backups: true
+  board_binding: true
+  trusted_device_identity: true
+  physical_risk_floors: true
+  edge_handler_sdk: true
   ota_updates: true
+  ota_target_compatibility: true
+  tuf_metadata: true
   recovery: true
+  hardware_in_loop_release_gate: true
 kingai:
   cli: true
   daemon: true
+  device_pack_admin_cli: true
   policy_engine: true
   approval_broker: true
   task_graph: true
@@ -25,7 +42,28 @@ kingai:
   model_fabric: true
   memory_fabric: true
   edge_agent_runtime: true
+  device_capability_runtime: true
   audit: true
+security:
+  daemon_user: _kingai
+  device_identity: /etc/kingai/device.json
+  device_pack_owner: root
+  device_pack_manifest_dir: /etc/kingai/device-packs
+  device_pack_artifact_root: /usr/lib/kingai/device-packs
+  device_pack_trust_dir: /etc/kingai/trust/device-pack-keys
+  device_pack_admin_audit: /var/log/kingai/device-pack-admin.jsonl
+  device_pack_trust_modification: owner_root_only
+  handler_socket_mode: "0600"
+  handler_namespace: /run/kingai-device
+  management_tcp_default: false
+  private_devices_for_kingaid: true
+  capability_bounding_set: empty
+release:
+  generic_image_bootable: false
+  board_device_pack_required: true
+  hardware_verified_requires_hil: true
+  arm64_direct_ab_write_reviewed: false
+  amd64_direct_ab_write_reviewed: true
 size_budget_mib:
   target: 600
   warning: 750

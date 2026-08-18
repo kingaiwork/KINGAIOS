@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "product": "KINGAI OS IoT / Edge",
+  "architectures": ["amd64", "arm64"],
+  "platforms": [
+    {"id":"generic-uefi-amd64","arch":"amd64","stage":"vm-boot-verified","vm_boot_verified":true,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/generic-uefi-amd64.device-pack.template.json"},
+    {"id":"generic-uefi-arm64","arch":"arm64","stage":"runtime-ready","vm_boot_verified":false,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/generic-uefi-arm64.device-pack.template.json"},
+    {"id":"raspberry-pi-5","arch":"arm64","stage":"integration-template","vm_boot_verified":false,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/raspberry-pi-5.device-pack.template.json"},
+    {"id":"raspberry-pi-cm5","arch":"arm64","stage":"integration-template","vm_boot_verified":false,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/raspberry-pi-cm5.device-pack.template.json"},
+    {"id":"nvidia-jetson-orin-nano","arch":"arm64","stage":"integration-template","vm_boot_verified":false,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/nvidia-jetson-orin-nano.device-pack.template.json"},
+    {"id":"nvidia-jetson-agx-orin","arch":"arm64","stage":"integration-template","vm_boot_verified":false,"hardware_verified":false,"bootable_release":false,"device_pack_template":"templates/nvidia-jetson-agx-orin.device-pack.template.json"}
+  ],
+  "release_rule": "vm_boot_verified records CI virtual-firmware boot evidence only. hardware_verified and bootable_release may become true only after signed artifact provenance review plus hardware-in-the-loop boot, device-handler, thermal/load, OTA power-loss and rollback tests."
+}

@@ -41,6 +41,7 @@ func usage() {
 
 execute is destructive and fail-closed. It requires root, an exact target confirmation,
 a verified KINGAI OS source root, a private STATE key file and explicit write enablement.
+IoT destructive execution is currently reviewed only for amd64 UEFI systems.
 Operational formatter/partitioner/bootloader output is sent to stderr; stdout is JSON only.`)
 }
 
@@ -81,13 +82,20 @@ func execute(args []string) {
 	// to stderr; only the final install result is serialized to stdout.
 	jsonOut := os.Stdout
 	os.Stdout = os.Stderr
-	res, err := installer.Execute(installer.ExecuteOptions{
+	opts := installer.ExecuteOptions{
 		Target:       *target,
 		Profile:      *profile,
 		SourceRoot:   *sourceRoot,
 		StateKey:     *stateKey,
 		Confirmation: *confirm,
-	})
+	}
+	var res installer.InstallResult
+	var err error
+	if *profile == "iot" {
+		res, err = installer.ExecuteIoT(opts)
+	} else {
+		res, err = installer.Execute(opts)
+	}
 	if err == nil {
 		err = installer.FinalizeInstalledSystem(res)
 	}
