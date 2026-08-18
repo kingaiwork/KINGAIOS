@@ -32,7 +32,8 @@ Desktop installs additionally provision the first local human account and place
 Without --state-key, a STATE unlock passphrase of at least 32 characters is
 requested securely from /dev/tty. Desktop account passwords are also requested
 securely when --user-password-file is omitted. Password values are never placed
-on the command line.
+on the command line. Caller-provided secret files are copied into a root-only
+runtime directory before destructive work begins.
 EOF
 }
 
@@ -122,12 +123,18 @@ if [[ -z "$STATE_KEY" ]]; then
   printf '%s' "$pass1" > "$generated_key"
   unset pass1 pass2
   STATE_KEY="$generated_key"
+else
+  [[ -f "$STATE_KEY" && -r "$STATE_KEY" ]] || { echo "STATE key file is unreadable" >&2; exit 1; }
+  private_key=$(mktemp "$runtime_dir/state-key.XXXXXX")
+  install -m0600 -- "$STATE_KEY" "$private_key"
+  generated_key="$private_key"
+  STATE_KEY="$private_key"
+  unset private_key
 fi
 
 if [[ "$PROFILE" == "desktop" ]]; then
   if [[ "${KINGAI_INSTALLER_CI:-0}" == "1" ]]; then
     [[ -n "$USERNAME" ]] || USERNAME=kingai
-    [[ -n "$HOSTNAME_VALUE" ]] || HOSTNAME_VALUE=kingai-ci
     LOCALE_VALUE="${LOCALE_VALUE:-C.UTF-8}"
     TIMEZONE_VALUE="${TIMEZONE_VALUE:-UTC}"
     if [[ -z "$USER_PASSWORD_FILE" ]]; then
@@ -163,6 +170,15 @@ if [[ "$PROFILE" == "desktop" ]]; then
       unset user_pass1 user_pass2
       USER_PASSWORD_FILE="$generated_password"
     fi
+  fi
+
+  if [[ -n "$USER_PASSWORD_FILE" && "$USER_PASSWORD_FILE" != "$generated_password" ]]; then
+    [[ -f "$USER_PASSWORD_FILE" && -r "$USER_PASSWORD_FILE" ]] || { echo "Desktop password file is unreadable" >&2; exit 1; }
+    private_password=$(mktemp "$runtime_dir/user-password.XXXXXX")
+    install -m0600 -- "$USER_PASSWORD_FILE" "$private_password"
+    generated_password="$private_password"
+    USER_PASSWORD_FILE="$private_password"
+    unset private_password
   fi
 fi
 
