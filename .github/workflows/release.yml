@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -36,7 +37,7 @@ env:
 jobs:
   build-test-publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 95
+    timeout-minutes: 120
     steps:
       # Release-chain Actions are pinned to immutable commits to prevent tag drift.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -69,6 +70,16 @@ jobs:
           fi
           echo "profile=$profile" >> "$GITHUB_OUTPUT"
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: Announce observable release run
+        shell: bash
+        run: |
+          description="run=${GITHUB_RUN_ID} ${{ steps.params.outputs.profile }}/${{ steps.params.outputs.channel }}"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=pending \
+            -f context='kingai/release-run' \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null || true
       - name: Run core release tests
         run: |
           go mod verify
@@ -76,6 +87,7 @@ jobs:
           go vet ./...
           python3 -m py_compile scripts/generate-sbom.py
           bash -n scripts/*.sh desktop/welcome/*.sh
+          bash -n distro/overlay/usr/lib/kingai/kingai-configure-desktop-install distro/overlay/usr/lib/kingai/kingai-installer-gui
           bash scripts/test-release-base-version.sh
       - name: Install build and VM tooling
         run: |
@@ -153,6 +165,19 @@ jobs:
           timeout 150 qemu-system-x86_64 -machine q35 -m 2048 -smp 2 -drive if=pflash,format=raw,readonly=on,file="$code_file" -drive if=pflash,format=raw,file=ovmf-release-vars.fd -cdrom "$iso" -boot d -display none -serial stdio -no-reboot -snapshot > qemu-uefi-release.log 2>&1; code=$?; set -e; cat qemu-uefi-release.log
           if [[ $code -ne 0 && $code -ne 124 ]]; then exit "$code"; fi
           grep -Eiq 'Linux version|casper|KINGAI|systemd' qemu-uefi-release.log
+      - name: Retain validated Developer Preview artifact
+        if: steps.params.outputs.channel == 'dev'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kingai-${{ steps.params.outputs.profile }}-${{ steps.params.outputs.channel }}-run-${{ github.run_id }}
+          path: |
+            ${{ steps.artifact.outputs.iso }}
+            ${{ steps.artifact.outputs.iso }}.sha256
+            ${{ steps.artifact.outputs.manifest }}
+            ${{ steps.artifact.outputs.sbom }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
       - name: Prepare release identity
         id: release
         shell: bash
@@ -177,9 +202,10 @@ jobs:
           - Architecture: amd64
           - Channel: ${channel}
           - Source commit: ${GITHUB_SHA}
+          - GitHub Actions run: ${GITHUB_RUN_ID}
           - BIOS and UEFI Live boot: verified in this workflow
           - Exact Live ISO installation path: required for Beta and above
-          - Desktop Developer Preview: installable when profile=desktop, with A/B roots and encrypted KINGAI state
+          - Desktop Developer Preview: installable when profile=desktop, with A/B roots and encrypted persistent KINGAI state/home
           - SPDX 2.3 SBOM: included
           - A/B, installer, Recovery and TUF gates: enforced by channel policy and commit-aware evidence freshness
           - Production signing secrets: never embedded in source
@@ -219,3 +245,19 @@ jobs:
           if [[ '${{ steps.params.outputs.channel }}' != stable ]]; then args+=(--prerelease); fi
           args+=('${{ steps.artifact.outputs.iso }}.sha256' '${{ steps.artifact.outputs.manifest }}' '${{ steps.artifact.outputs.sbom }}')
           gh "${args[@]}"
+      - name: Publish observable release result
+        if: always()
+        shell: bash
+        run: |
+          case '${{ job.status }}' in
+            success) state=success ;;
+            cancelled) state=error ;;
+            *) state=failure ;;
+          esac
+          description="run=${GITHUB_RUN_ID} ${{ steps.params.outputs.profile }}/${{ steps.params.outputs.channel }} ${{ job.status }}"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context='kingai/release-run' \
+            -f description="$description" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null || true
