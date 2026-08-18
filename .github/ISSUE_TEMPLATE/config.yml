@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Security vulnerability
-    url: https://github.com/kingaiwork/KINGAIOS/security
-    about: Follow SECURITY.md and private security reporting where available. Do not disclose sensitive vulnerabilities in a public issue.
-  - name: KINGAI OS website
-    url: https://os.kingai.work
-    about: Official KINGAI OS product and documentation entry point.

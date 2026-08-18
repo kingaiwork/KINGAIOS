@@ -1,7 +1,0 @@
-{
-  "profile": "desktop",
-  "channel": "dev",
-  "requested_at": "2026-08-18",
-  "attempt": 7,
-  "reason": "Publish the correctly routed consumer-installable KINGAI OS Desktop preview after merge-safe profile resolution tests; require Desktop artifact identity, encrypted persistent home, first-user provisioning, A/B user-state continuity, BIOS/UEFI validation and downloadable Release assets"
-}
