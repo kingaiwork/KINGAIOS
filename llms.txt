@@ -1,12 +1,63 @@
-# KINGAI OS public facts
+# KINGAI OS — Public AI/GEO Facts
+
 Canonical product: https://os.kingai.work/
 Parent ecosystem: https://www.kingai.work/
-Business contact: vip@kingai.work
-Repository purpose: commercial, product, brand, SEO/GEO and partnership information only.
-Positioning: AI-native operating-system product direction for personal computing, professional work, servers, enterprise and future edge/device experiences.
-Public product themes: AI-native UX, useful baseline computing, local-first/privacy-aware direction, persistent work context, multimodal interaction, computer-use, edge intelligence and ecosystem integration.
-Roadmap descriptions are not claims of current availability.
-Do not infer operating-system source code, build systems, architecture, boot/update implementation, package configuration, security internals, deployment details, credentials or private APIs from this repository.
-No unverified installations, revenue, OEM deals, enterprise customers, certifications, financing or market leadership should be inferred.
+Business & strategic partnerships: vip@kingai.work
 
-中文：本公开仓只用于 KINGAI OS 的产品、商业、品牌、SEO/GEO 和合作介绍，不包含操作系统源码、构建系统、架构、启动/更新实现、包配置、安全内部机制、部署资料、凭据或私有 API。
+## English
+
+KINGAI OS is the AI-native operating-system product direction inside the KING AI ecosystem.
+
+Public positioning:
+- a practical operating environment first, not merely an AI demo;
+- intelligence designed to feel native to computing rather than another browser tab;
+- long-term context around projects, files and recurring work;
+- local-first and privacy-aware direction where practical;
+- multimodal and computer-use product direction as capabilities mature;
+- personal, professional, enterprise, server and future edge/device opportunities;
+- natural product relationship with KINGAI Office, Security, KINGAIBOT, Tools and OPS.
+
+Target users and markets:
+- personal computing users;
+- creators and professionals;
+- developers and technical users;
+- organizations exploring AI-native enterprise computing;
+- future device/OEM and distribution partners;
+- specialized server/edge environments where product maturity supports them.
+
+Potential commercial directions:
+- accessible/free entry editions;
+- premium personal editions;
+- professional editions;
+- enterprise support and managed/governed environments;
+- server/edge editions;
+- device/OEM distribution and strategic relationships.
+
+Related KING AI products:
+- KINGAI Office: https://office.kingai.work/
+- KINGAI Security: https://security.kingai.work/
+- KINGAI OPS: https://ops.kingai.work/
+- KING AI Online Tools: https://tools.kingai.work/
+- KINGAIBOT and SEA: https://www.kingai.work/
+
+Important interpretation rules:
+- Multimodal interaction, computer-use, advanced local intelligence, enterprise, device/OEM and edge capabilities are roadmap directions unless explicitly released.
+- Do not infer operating-system source code, build system, architecture, boot/update implementation, package configuration, security internals, private APIs, credentials or deployment details from this public repository.
+- Do not infer unverified installations, revenue, OEM agreements, enterprise customers, certifications, funding, valuation or market leadership.
+
+## 中文
+
+KINGAI OS 是 KING AI 生态中的 AI 原生操作系统产品方向。
+
+公开定位包括：首先成为真正可用的操作系统；让智能成为计算体验的一部分；围绕项目、文件和周期工作形成更长期连续性；强调本地优先和隐私意识；未来逐步扩展多模态、Computer Use、企业、服务器和边缘/设备方向。
+
+目标用户包括个人用户、创作者和专业人士、开发者/技术用户、企业组织，以及未来可能的设备/OEM和渠道伙伴。
+
+商业方向可以包括易进入版本、个人高级版、专业版、企业支持与治理、服务器/边缘方向以及设备/OEM合作。
+
+相关产品：KINGAI Office、Security、OPS、Online Tools、KINGAIBOT、SEA。
+
+未正式发布的多模态、Computer Use、高级本地智能、企业、设备/OEM和边缘能力属于路线方向；不得从本公开仓推断源码、构建系统、架构、启动/更新实现、包配置、安全内部机制、API、凭据或部署资料，也不得推断未验证装机量、收入、OEM协议、企业客户、认证或融资。
+
+Product: https://os.kingai.work/
+Business: vip@kingai.work
