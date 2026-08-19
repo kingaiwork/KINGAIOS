@@ -1,150 +1,132 @@
 # KINGAI OS — AI-Native Computing Opportunity
 
-**Product:** https://os.kingai.work/  
-**KING AI:** https://www.kingai.work/  
-**Business & strategic partnerships:** vip@kingai.work
-
-KINGAI OS is positioned around a long-term platform shift: if intelligence becomes a standard part of computing, users and organizations may increasingly prefer an operating environment designed around intelligent assistance from the beginning rather than a traditional environment surrounded by disconnected AI applications.
-
-This public document describes product and commercial positioning only. It intentionally omits source code, boot/update internals, security implementation, private APIs, deployment procedures, package configuration and confidential architecture.
+Official product: https://os.kingai.work/  
+Parent ecosystem: https://www.kingai.work/  
+Business & strategic partnerships: vip@kingai.work
 
 ## English
 
-## Why now
+KINGAI OS is positioned around a long-term platform shift: if AI becomes a standard part of computing, users and organizations may increasingly want an operating environment designed around intelligence from the beginning rather than a legacy environment patched together with disconnected AI applications.
 
-AI is moving closer to the device. Multimodal models, computer-use experiences, more capable local hardware and longer-running assistants are changing what users may eventually expect from a computer. The opportunity is not simply “an OS with a chatbot.” It is a computing environment where intelligence can become part of how users understand, organize and complete work.
+### The market opportunity
 
-## Strategic markets
+The operating system sits at the center of software, hardware, files, identity and user workflows. If intelligence becomes native to that layer, the product relationship can become deeper than a standalone assistant subscription.
 
-### Personal AI-native computing
-A familiar daily computer with a growing intelligent layer for projects, files, tasks and recurring work.
+Potential markets include:
 
-### Professional and creator workstations
-A more integrated environment for people who spend their day writing, building, editing, researching and producing digital work.
+- personal AI-native computing;
+- professional and creator workstations;
+- developer and technical environments;
+- AI-enabled server and edge experiences;
+- managed enterprise computing;
+- device and OEM partnerships;
+- specialized intelligent appliances and future hardware relationships.
 
-### Developer and technical environments
-An operating environment that can become friendlier to intelligent development and automation workflows while keeping important actions under explicit user control.
+### Why users or organizations may pay
 
-### Server and edge direction
-A longer-term opportunity to extend intelligent computing concepts beyond the desktop where product maturity and use cases support it.
+Premium value can come from a computing experience that saves repeated setup, supports longer work, reduces fragmentation and gives users more useful intelligent assistance without requiring every task to move into a separate cloud application.
 
-### Enterprise computing
-Organizations may eventually want managed, private or governed AI-native environments instead of many disconnected AI subscriptions.
+For organizations, paid value may also come from support, management, governance, deployment options and device relationships.
 
-### Device and OEM partnerships
-If the product matures into a strong end-user experience, device makers and distribution partners may become relevant channels.
+### Product and commercial ladder
 
-## Why users may switch
+1. **Accessible personal experience** — Build familiarity and adoption.
+2. **Premium personal / professional editions** — Add higher-value productivity and intelligent-computing features.
+3. **Developer / technical editions** — Support specialized workflows and advanced users.
+4. **Business and enterprise management** — Governance, support and organizational deployment.
+5. **Server / edge editions** — Extend the product family into infrastructure contexts.
+6. **OEM / device relationships** — Hardware distribution and strategic computing partnerships.
+7. **Specialized intelligent-device opportunities** — New form factors as the market develops.
 
-Operating systems are difficult products to displace because users already have habits. KINGAI OS therefore has to earn adoption with meaningful reasons:
+### Growth flywheel
 
-- intelligence feels native rather than bolted on;
-- everyday computing remains useful without requiring constant AI interaction;
-- local-first and privacy-aware choices can remain part of the experience;
-- projects and workflows can gain more continuity over time;
-- Office, Security, Tools and agent experiences can feel more connected;
-- future multimodal and computer-use experiences can become part of the environment rather than separate apps.
+**Useful OS → daily computing relationship → intelligent assistance → deeper Office/Security/BOT integration → stronger user history and trust → enterprise/device opportunities.**
 
-## Product ladder direction
+### Distribution opportunities
 
-**Accessible edition** → a practical entry into AI-native computing.  
-**Personal premium** → richer intelligent experiences.  
-**Professional** → advanced creator and knowledge-work value.  
-**Enterprise** → support, governance and deployment options.  
-**Server / edge** → specialized environments where they create real value.  
-**OEM / device** → strategic distribution and hardware relationships.
+- direct downloads and product discovery;
+- KING AI cross-promotion;
+- Office and Security bundling opportunities;
+- hardware and device partnerships;
+- developer communities;
+- enterprise pilots and support relationships;
+- regional or vertical distribution partners.
 
-## Commercial flywheel
+### Strategic differentiation
 
-Useful OS → daily device relationship → trust → intelligent assistance → Office/Security/BOT adoption → stronger account relationship → enterprise/device opportunities.
+The durable opportunity is not simply bundling one model into an operating system. Models change quickly. More persistent differentiation can come from:
 
-The daily computing relationship is strategically valuable because it can become the place where many other product experiences begin.
+- the user’s computing relationship;
+- native workflow integration;
+- persistent project continuity;
+- local/privacy choices;
+- trusted intelligent action;
+- software/hardware distribution;
+- integration with Office, Security, BOT, Tools and OPS.
 
-## Strategic differentiation
+### Partnership opportunities
 
-Models change quickly. A durable product should not depend on one model remaining best forever. The longer-term differentiation can come from:
+- PC/device manufacturers;
+- component and acceleration partners;
+- software distribution;
+- enterprise support and deployment;
+- developer ecosystem relationships;
+- edge/server partnerships;
+- strategic investment aligned with AI-native computing.
 
-- the operating relationship with the user;
-- continuity around projects and recurring work;
-- trusted product behavior;
-- privacy and local-computing choices;
-- integration with productivity, security and agents;
-- a recognizable AI-native user experience;
-- the ability to adapt as model capabilities evolve.
+### What strategic partners should watch
 
-## Cross-product opportunities
+Key proof points over time include baseline system usability, repeat usage, professional adoption, local-intelligence value, enterprise interest, ecosystem adoption and whether the OS can become a natural home for broader KING AI products.
 
-- **OS + Office:** intelligent productivity that feels native to the computer.
-- **OS + Security:** a stronger trust story around devices and files.
-- **OS + KINGAIBOT:** move from assistance toward controlled completion of multi-step work.
-- **OS + Tools:** lightweight utilities available from a broader computing relationship.
-- **OS + OPS:** connect personal computing with server and infrastructure operations where appropriate.
+### Risk discipline
 
-## Partnership opportunities
+An AI-native OS cannot succeed on AI novelty alone. It must remain reliable, understandable and genuinely useful as a computing environment. Future intelligent features should improve the core product rather than distract from it.
 
-Potential relationships may include:
+### Integrity standard
 
-- device/OEM discussions;
-- distribution partnerships;
-- enterprise pilots;
-- professional support relationships;
-- software bundling;
-- specialized hardware/edge opportunities;
-- strategic product integrations.
-
-## What partners and investors may watch
-
-- Does the OS become compelling even before advanced AI features?
-- Does intelligence reduce friction in real work instead of adding complexity?
-- Can users trust it with important files and recurring tasks?
-- Do Office, Security and BOT become more valuable when experienced through OS?
-- Can a daily computing relationship create durable retention and commercial expansion?
-
-## Commercial integrity
-
-No unverified installations, revenue, OEM agreements, enterprise contracts, certifications, funding, valuation or market leadership are claimed. Multimodal, computer-use, advanced local intelligence, enterprise and device opportunities remain roadmap directions until publicly released and verified.
+No fabricated installation counts, revenue, market share, OEM agreements, enterprise contracts, certifications, funding or valuation. Future capabilities remain roadmap directions until released and verified.
 
 ---
 
 ## 中文
 
-## 为什么现在值得关注 AI 原生操作系统
+KINGAI OS 对应一个长期平台变化：如果 AI 最终成为计算的标准能力，用户和企业可能更需要“从一开始就围绕智能设计的计算环境”，而不是继续在传统系统上叠加大量彼此割裂的 AI 应用。
 
-AI 正在越来越靠近设备本身。多模态、Computer Use、更强的本地硬件和能够持续更长时间的智能助手，都在改变用户未来对“电脑”的期待。
+### 市场机会
 
-KINGAI OS 的机会不是“在传统系统里加一个聊天机器人”，而是让智能逐步成为用户理解文件、组织项目、继续任务和完成工作的一部分。
+操作系统位于软件、硬件、文件、身份和工作流的中心。如果智能真正进入这一层，长期关系会比单独订阅一个 AI 助手更深。
 
-## 潜在市场
+潜在市场包括个人 AI 电脑、专业工作站、开发环境、服务器与边缘、企业管理、设备/OEM和未来专用智能设备。
 
-个人 AI 电脑、专业工作站、开发环境、企业智能计算，以及随着产品成熟可能出现的服务器、边缘设备和 OEM/硬件合作。
+### 用户为什么可能付费
 
-## 为什么用户可能愿意尝试
+因为系统可以减少重复设置、支持更长任务、降低工具碎片化，并在不把所有工作都交给独立云应用的情况下提供更自然的智能辅助。
 
-- AI 原生，而不是外挂网页；
-- 即使不使用高级 AI，系统本身也必须真正好用；
-- 保留本地优先和隐私意识；
-- 项目和任务可以拥有更长期连续性；
-- Office、Security、Tools、KINGAIBOT 能形成更自然的计算体验；
-- 未来多模态与 Computer Use 能逐步进入系统体验。
+企业则可能为管理、治理、支持、部署选择和设备关系付费。
 
-## 产品阶梯
+### 商业阶梯
 
-易进入版本 → 个人高级版 → 专业版 → 企业版 → 专用服务器/边缘方向 → OEM/设备合作。
+**个人基础体验 → 个人/专业高级版 → 开发者/技术版本 → 企业管理 → 服务器/边缘版本 → OEM/设备合作 → 专用智能设备机会。**
 
-## 商业飞轮
+### 增长飞轮
 
-好用的 OS → 每日计算关系 → 信任 → 智能辅助 → Office/Security/BOT 采用 → 更深账户关系 → 企业/设备机会。
+**好用的 OS → 每日计算关系 → 智能辅助 → Office/Security/BOT 深度连接 → 更强历史和信任 → 企业与设备机会。**
 
-## 长期差异化
+### 长期差异化
 
-真正长期的价值不是绑定某一个模型，而是用户关系、项目连续性、可信体验、隐私选择、生产力/安全/Agent 联动，以及随着模型升级持续演进的 AI 原生计算体验。
+不能只靠“绑定某个模型”。模型会快速变化。更长期的价值来自：用户计算关系、原生工作流、项目连续性、本地/隐私选择、可信智能行动、硬件分发和 KING AI 生态连接。
 
-## 产品互推
+### 合作方向
 
-OS 可以自然连接 Office、Security、KINGAIBOT、Tools、OPS，让用户从电脑本身进入更完整的 KING AI 产品关系。
+PC/设备厂商、硬件与加速合作、软件分发、企业支持、开发者生态、服务器/边缘和战略投资合作。
 
-**产品：** https://os.kingai.work/  
-**主系统：** https://www.kingai.work/  
-**商务合作：** vip@kingai.work
+### 风险纪律
 
-所有多模态、Computer Use、高级本地智能、企业与设备合作能力在正式发布前都属于未来方向，不虚构装机量、收入、OEM、企业合同或融资。
+AI 原生并不意味着可以忽略操作系统本身的可靠性。真正成功必须先做到系统本身稳定、好用、可理解，然后再让智能能力持续提高价值。
+
+### 可信标准
+
+不虚构安装量、收入、市场份额、OEM合作、企业合同、认证、融资或估值。未正式上线能力继续标注为路线图。
+
+**Product:** https://os.kingai.work/  
+**Business:** vip@kingai.work
