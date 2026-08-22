@@ -1,0 +1,70 @@
+name: KINGAI OS Zero-Bill VPS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'core | images | vm | release | all'
+        required: false
+        default: 'core'
+        type: choice
+        options: [core, images, vm, release, all]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kingai-os-zero-bill-${{ github.ref }}-${{ inputs.scope || 'core' }}
+  cancel-in-progress: true
+
+env:
+  KINGAI_ZERO_BILL: '1'
+  KINGAI_VPS_ROOT: /srv/kingai
+
+jobs:
+  core:
+    runs-on: [self-hosted, linux, x64, kingai-vps]
+    timeout-minutes: 75
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'core' || inputs.scope == 'all'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Zero-bill guard and deterministic validation
+        run: bash scripts/zero-bill-vps-validate.sh core
+
+  images:
+    runs-on: [self-hosted, linux, x64, kingai-vps]
+    timeout-minutes: 240
+    if: github.event_name == 'workflow_dispatch' && (inputs.scope == 'images' || inputs.scope == 'all')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build rootfs/ISO/IoT/Sentinel images on owned VPS
+        run: bash scripts/zero-bill-vps-validate.sh images
+
+  vm:
+    runs-on: [self-hosted, linux, x64, kingai-vps]
+    timeout-minutes: 240
+    if: github.event_name == 'workflow_dispatch' && (inputs.scope == 'vm' || inputs.scope == 'all')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Run local KVM readiness and delegated smoke suite
+        run: bash scripts/zero-bill-vps-validate.sh vm
+
+  release:
+    runs-on: [self-hosted, linux, x64, kingai-vps]
+    timeout-minutes: 240
+    if: github.event_name == 'workflow_dispatch' && (inputs.scope == 'release' || inputs.scope == 'all')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build local release candidate without publication
+        run: bash scripts/zero-bill-vps-validate.sh release
